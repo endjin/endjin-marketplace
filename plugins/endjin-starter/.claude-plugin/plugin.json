@@ -1,0 +1,12 @@
+{
+  "name": "endjin-starter",
+  "displayName": "endjin Starter",
+  "description": "Starter plugin with an explain-diff-html skill (rich HTML explanations of code changes) — also a template for new plugins",
+  "author": {
+    "name": "endjin",
+    "url": "https://endjin.com"
+  },
+  "license": "MIT",
+  "keywords": ["template", "starter"],
+  "repository": "https://github.com/endjin/endjin-marketplace"
+}

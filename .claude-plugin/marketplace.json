@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "endjin",
+  "description": "endjin's marketplace of Claude Code plugins and skills",
+  "owner": {
+    "name": "endjin",
+    "email": "howard.vanrooijen@endjin.com",
+    "url": "https://endjin.com"
+  },
+  "plugins": [
+    {
+      "name": "endjin-starter",
+      "source": "./plugins/endjin-starter",
+      "description": "Starter plugin with an explain-diff-html skill (rich HTML explanations of code changes) — also a template for new plugins",
+      "author": {
+        "name": "endjin"
+      },
+      "license": "MIT",
+      "keywords": ["template", "starter"],
+      "category": "examples",
+      "repository": "https://github.com/endjin/endjin-marketplace"
+    }
+  ]
+}
