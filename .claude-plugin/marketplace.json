@@ -9,16 +9,19 @@
   },
   "plugins": [
     {
-      "name": "endjin-starter",
-      "source": "./plugins/endjin-starter",
-      "description": "Starter plugin with an explain-diff-html skill (rich HTML explanations of code changes) — also a template for new plugins",
+      "name": "code-review-tools",
+      "source": "./plugins/code-review-tools",
+      "description": "Tools that make code reviews of branches and PRs easier — includes explain-diff-html for rich HTML explanations of code changes",
       "author": {
         "name": "endjin"
       },
       "license": "MIT",
-      "keywords": ["template", "starter"],
-      "category": "examples",
+      "keywords": ["code-review", "diff", "pull-request"],
+      "category": "code-review",
       "repository": "https://github.com/endjin/endjin-marketplace"
     }
-  ]
+  ],
+  "renames": {
+    "endjin-starter": "code-review-tools"
+  }
 }

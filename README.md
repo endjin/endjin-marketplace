@@ -9,7 +9,7 @@ endjin-marketplace/
 ├── .claude-plugin/
 │   └── marketplace.json          # Marketplace catalog (required)
 └── plugins/
-    └── endjin-starter/           # One directory per plugin
+    └── code-review-tools/        # One directory per plugin
         ├── .claude-plugin/
         │   └── plugin.json       # Plugin manifest
         └── skills/
@@ -17,7 +17,7 @@ endjin-marketplace/
                 └── SKILL.md      # One directory per skill
 ```
 
-`marketplace.json` sets `metadata.pluginRoot` to `./plugins`, so plugin entries can reference their directory name directly (e.g. `"source": "endjin-starter"`).
+Each plugin entry in `marketplace.json` references its directory with an explicit relative path (e.g. `"source": "./plugins/code-review-tools"`).
 
 ## Using the marketplace
 
@@ -31,16 +31,16 @@ Add the marketplace (once), then install plugins from it:
 /plugin marketplace add endjin/endjin-marketplace
 
 # Install a plugin
-/plugin install endjin-starter@endjin
+/plugin install code-review-tools@endjin
 ```
 
-Skills are namespaced by plugin: for example, `explain-diff-html` (which builds a rich, self-contained HTML explanation of a code change, branch, or PR — with background, intuition, a code walkthrough, and an interactive quiz) is invoked as `/endjin-starter:explain-diff-html`, or Claude invokes it automatically based on its `description` when you ask for a rich explanation of a diff.
+Skills are namespaced by plugin: for example, `explain-diff-html` (which builds a rich, self-contained HTML explanation of a code change, branch, or PR — with background, intuition, a code walkthrough, and an interactive quiz) is invoked as `/code-review-tools:explain-diff-html`, or Claude invokes it automatically based on its `description` when you ask for a rich explanation of a diff.
 
 Non-interactive (CI, scripts):
 
 ```bash
 claude plugin marketplace add endjin/endjin-marketplace
-claude plugin install endjin-starter@endjin --scope project
+claude plugin install code-review-tools@endjin --scope project
 ```
 
 ## Adding a new plugin
@@ -65,7 +65,7 @@ claude plugin install endjin-starter@endjin --scope project
 3. Register it in `.claude-plugin/marketplace.json` under `plugins`:
 
    ```json
-   { "name": "<plugin-name>", "source": "<plugin-name>", "description": "..." }
+   { "name": "<plugin-name>", "source": "./plugins/<plugin-name>", "description": "..." }
    ```
 
 4. Validate before committing:

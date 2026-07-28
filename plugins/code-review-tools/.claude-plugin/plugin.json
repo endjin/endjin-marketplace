@@ -1,0 +1,12 @@
+{
+  "name": "code-review-tools",
+  "displayName": "Code Review Tools",
+  "description": "Tools that make code reviews of branches and PRs easier — includes explain-diff-html for rich HTML explanations of code changes",
+  "author": {
+    "name": "endjin",
+    "url": "https://endjin.com"
+  },
+  "license": "MIT",
+  "keywords": ["code-review", "diff", "pull-request"],
+  "repository": "https://github.com/endjin/endjin-marketplace"
+}
