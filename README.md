@@ -43,6 +43,34 @@ claude plugin marketplace add endjin/endjin-marketplace
 claude plugin install code-review-tools@endjin --scope project
 ```
 
+## Works with GitHub Copilot CLI too
+
+Copilot CLI's plugin system mirrors Claude Code's and [reads `.claude-plugin/marketplace.json` and `plugin.json` directly](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/plugins-marketplace), and the SKILL.md format is the shared [Agent Skills standard](https://github.blog/changelog/2025-12-18-github-copilot-now-supports-agent-skills/) — so this marketplace works from Copilot CLI with no changes.
+
+Register the marketplace and install ([docs](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/plugins-finding-installing)):
+
+```shell
+copilot plugin marketplace add endjin/endjin-marketplace
+copilot plugin install code-review-tools@endjin
+```
+
+Or declaratively, in `~/.copilot/settings.json` (user) or `.github/copilot/settings.json` (repo):
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "endjin": { "source": { "source": "github", "repo": "endjin/endjin-marketplace" } }
+  },
+  "enabledPlugins": { "code-review-tools@endjin": true }
+}
+```
+
+Portability caveats for future plugins:
+
+- Skills are fully portable; `commands/`, output styles, and the `renames` field are Claude Code-only (Copilot ignores them).
+- Copilot supports only a subset of hook events (command handlers only) and ignores rich agent frontmatter (`model`, `permissionMode`, etc.).
+- Never add an explicit `skills` field to `plugin.json` — both tools auto-discover `skills/`, and an explicit field breaks compatibility.
+
 ## Adding a new plugin
 
 1. Create `plugins/<plugin-name>/` (kebab-case) with `.claude-plugin/plugin.json`:
