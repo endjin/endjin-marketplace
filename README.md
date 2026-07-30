@@ -1,6 +1,6 @@
-# endjin Claude Code Marketplace
+# endjin Plugin Marketplace
 
-A [Claude Code plugin marketplace](https://code.claude.com/docs/en/plugin-marketplaces) for sharing endjin's plugins and skills.
+A marketplace of endjin's plugins and skills for AI coding agents. It uses the [Claude Code plugin marketplace format](https://code.claude.com/docs/en/plugin-marketplaces), which [GitHub Copilot CLI also reads natively](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/plugins-marketplace) — so one repo serves both tools. The skills themselves use the cross-tool [Agent Skills standard](https://github.blog/changelog/2025-12-18-github-copilot-now-supports-agent-skills/) (SKILL.md), which is also understood by VS Code, Cursor, and Codex CLI.
 
 ## Structure
 
@@ -19,7 +19,7 @@ endjin-marketplace/
 
 Each plugin entry in `marketplace.json` references its directory with an explicit relative path (e.g. `"source": "./plugins/code-review-tools"`).
 
-## Using the marketplace
+## Using the marketplace with Claude Code
 
 Add the marketplace (once), then install plugins from it:
 
@@ -58,9 +58,9 @@ claude plugin install code-review-tools@endjin --scope project
 claude plugin marketplace update endjin
 ```
 
-## Works with GitHub Copilot CLI too
+## Using the marketplace with GitHub Copilot CLI
 
-Copilot CLI's plugin system mirrors Claude Code's and [reads `.claude-plugin/marketplace.json` and `plugin.json` directly](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/plugins-marketplace), and the SKILL.md format is the shared [Agent Skills standard](https://github.blog/changelog/2025-12-18-github-copilot-now-supports-agent-skills/) — so this marketplace works from Copilot CLI with no changes.
+Copilot CLI's plugin system mirrors Claude Code's and reads `.claude-plugin/marketplace.json` and `plugin.json` directly, so this marketplace works from Copilot CLI with no changes.
 
 Register the marketplace and install ([docs](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/plugins-finding-installing)):
 
