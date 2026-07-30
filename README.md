@@ -32,6 +32,20 @@ Add the marketplace (once), then install plugins from it:
 
 # Install a plugin
 /plugin install code-review-tools@endjin
+
+# Activate in the current session (new sessions pick plugins up automatically)
+/reload-plugins
+```
+
+To get the latest plugin changes later (versions track git commits, so every push to `main` is a new version):
+
+```shell
+# Update this marketplace and its installed plugins, then reload
+/plugin marketplace update endjin
+/reload-plugins
+
+# Or update all registered marketplaces at once
+/plugin marketplace update
 ```
 
 Skills are namespaced by plugin: for example, `explain-diff-html` (which builds a rich, self-contained HTML explanation of a code change, branch, or PR — with background, intuition, a code walkthrough, and an interactive quiz) is invoked as `/code-review-tools:explain-diff-html`, or Claude invokes it automatically based on its `description` when you ask for a rich explanation of a diff.
@@ -41,6 +55,7 @@ Non-interactive (CI, scripts):
 ```bash
 claude plugin marketplace add endjin/endjin-marketplace
 claude plugin install code-review-tools@endjin --scope project
+claude plugin marketplace update endjin
 ```
 
 ## Works with GitHub Copilot CLI too
