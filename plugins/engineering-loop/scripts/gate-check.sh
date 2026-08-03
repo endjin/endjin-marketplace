@@ -21,8 +21,12 @@ INPUT="$(cat 2>/dev/null || true)"
 CMD="$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)"
 [ -n "$CMD" ] || exit 0
 
-# Only care about git commit (not commit-msg lookups, log greps, etc.)
-printf '%s' "$CMD" | grep -qE '(^|[;&|[:space:]])git([[:space:]]+-[^[:space:]]+)*[[:space:]]+commit([[:space:]]|$)' || exit 0
+# Only care about git commit (not commit-msg lookups, log greps, etc.).
+# Global options are skipped over to reach the subcommand. The value-taking forms are listed
+# FIRST so `-C /repo` is consumed as one unit — matching only bare `-flag` would stop at `-C`,
+# leave `/repo commit` unmatched, and let `git -C /repo commit` slip the gate entirely.
+GIT_COMMIT_RE='(^|[;&|[:space:]])git([[:space:]]+(-[cC][[:space:]]+[^[:space:]]+|--(git-dir|work-tree|namespace|exec-path|super-prefix|config-env)([[:space:]]+|=)[^[:space:]]+|-[^[:space:]]+))*[[:space:]]+commit([[:space:]]|$)'
+printf '%s' "$CMD" | grep -qE "$GIT_COMMIT_RE" || exit 0
 
 CWD="$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)"
 [ -n "$CWD" ] && cd "$CWD" 2>/dev/null

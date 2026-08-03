@@ -37,7 +37,7 @@ exactly what the node declared, and nothing else?**
    out-of-scope (e.g. `src/**` for a one-file fix), report SCOPE_TOO_BROAD — an unauditable
    declaration fails the audit by definition.
 5. Append the verdict to `.engineering-loop/gates.json` `.verdicts[]` (canonical schema; merge,
-   never clobber): `{"node": "<id>", "gate": "drift", "prosecutor": null,
+   never clobber): `{"run": "<run_id from work-graph.json>", "node": "<id>", "gate": "drift", "prosecutor": null,
    "verdict": "PASS|FAIL", "detail": {"out_of_scope": [...], "class_violations": [...],
    "tightness": "OK|TOO_BROAD"}, "timestamp": "<iso>"}`.
 6. Final response: the verdict, then per finding — what drifted → why it matters (one line) →

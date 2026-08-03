@@ -39,7 +39,7 @@ re-push, and never "fix" anything — you observe, classify, and diagnose.
 5. Track recurrence: if the same failure class has appeared in prior runs (check
    `.engineering-loop/gates.json` history), flag it as an **andon candidate** for kaizen.
 6. Append the outcome to `.engineering-loop/gates.json` `.verdicts[]` (canonical schema):
-   `{"node": "<node-id-or-null>", "gate": "ci", "prosecutor": null,
+   `{"run": "<run_id from work-graph.json>", "node": "<node-id-or-null>", "gate": "ci", "prosecutor": null,
    "verdict": "GREEN|RED|STALLED|NO_RUNS", "detail": {"sha": "...", "classification":
    "FLAKY-SUSPECT|REAL|null", "failing_checks": [...], "log_excerpt": "..."},
    "timestamp": "..."}`.

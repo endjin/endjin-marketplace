@@ -38,7 +38,7 @@ rationale; judge only the artifact against the lenses.
    verify and none is pre-registered, that is a violation regardless of how plausible the claim is.
 4. Append your verdict to the `.verdicts[]` array of the stated gates file (merge, never
    clobber — read it first; Bash exists in your toolset for exactly this write and nothing
-   else): `{"node": "<id>", "gate": "prosecution", "prosecutor": "plan", "verdict":
+   else): `{"run": "<run_id from work-graph.json>", "node": "<id>", "gate": "prosecution", "prosecutor": "plan", "verdict":
    "PASS|REJECT", "detail": {"lens_results": [{"lens_id": "...", "verdict": "PASS|REJECT",
    "cited_text": "...", "cheapest_fix": "..."}]}, "timestamp": "<iso>"}` — overall REJECT if
    any lens rejects. This is the canonical schema (the router's state contract governs).

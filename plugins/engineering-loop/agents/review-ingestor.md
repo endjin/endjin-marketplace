@@ -42,7 +42,8 @@ human) act.
    approval; a human-opened thread is only ever resolved by a human.
 5. **Detect oscillation:** if a comment re-opens ground addressed in a prior round (same hunk,
    same debate), flag CONTRADICTION for human escalation rather than another round-trip.
-6. Append the triage to `gates.json` `.verdicts[]` (canonical schema): `{"node": null,
+6. Append the triage to `gates.json` `.verdicts[]` (canonical schema):
+   `{"run": "<run_id from work-graph.json>", "node": null,
    "gate": "review", "prosecutor": null, "verdict": "OPEN|RESOLVED", "detail": {"pr": n,
    "comments": [{"id": ..., "author": "...", "trust": "member|external", "concern": "...",
    "route": "evidence|slice|test|doc|human", "draft_reply": "...", "status": "triaged"}]},

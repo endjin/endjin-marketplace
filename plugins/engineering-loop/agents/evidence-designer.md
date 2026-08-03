@@ -47,7 +47,8 @@ never reinterpreted after the fact.
    (terraform plan, migration dry-run, data-diff) is captured verbatim as the artifact.
 
 ## Output
-Append the evidence verdict to `gates.json` `.verdicts[]` (canonical schema): `{"node": "...",
+Append the evidence verdict to `gates.json` `.verdicts[]` (canonical schema):
+`{"run": "<run_id from work-graph.json>", "node": "...",
 "gate": "evidence", "prosecutor": null, "verdict": "PASS|FAIL|UNTESTABLE", "detail":
 {"registered_hash": "...", "measured": {...}, "explanation": "..."}, "timestamp": "..."}` —
 then return the same JSON plus a ≤8-line summary. Never edit production code; your writes are
