@@ -1,0 +1,63 @@
+# Definition-of-Ready checklist registry — SEED (ships with the plugin, read-only).
+# A node may enter Execute only when every applicable item is satisfied or explicitly
+# waived (accept-with-justification, logged). Merged with overlays exactly like
+# lenses.yaml; kaizen appends proposals to overlays, never edits this seed.
+
+checklist:
+  - id: dor-intent
+    text: The node states its intent in one sentence and the real goal has been confirmed with the human (not just the literal ask).
+    applies_when: {}
+    status: active
+
+  - id: dor-acceptance
+    text: Acceptance criteria are written and checkable (a test, a metric, an observable outcome).
+    applies_when: {}
+    status: active
+
+  - id: dor-evidence
+    text: >-
+      Any quality-attribute claim carries a pre-registered validation (immutable: metric,
+      threshold, workload, required n) OR a committed thinnest-slice-that-measures.
+      Quality-attribute claims force Tier 2.
+    applies_when: {}
+    status: active
+
+  - id: dor-scope
+    text: Declared scope (expected files / resources / artifacts + change-class mechanical|semantic|config) is recorded and locked; it is tight, not defensive.
+    applies_when: {}
+    status: active
+
+  - id: dor-tier
+    text: The node has a tier (0/1/2) with a one-line reason, auto-selected and human-visible.
+    applies_when: {}
+    status: active
+
+  - id: dor-reversibility
+    text: The node is classified one-way/two-way door; irreversible effects have an engineered reversal path or a forward-fix strategy and a human go/no-go.
+    applies_when: {}
+    status: active
+
+  - id: dor-idiom
+    text: Any idiom/pattern/tool adoption has an allow/deny decision with exclusion criteria recorded in the plan.
+    applies_when: {}
+    status: active
+
+  - id: dor-consumers
+    text: For any observable-behaviour or interface change, consumers are enumerated (lineage/contract tests) and a compatibility strategy chosen (additive/expand-contract preferred).
+    applies_when: {}
+    status: active
+
+  - id: dor-observation
+    text: How the node's success/failure will be observed after shipping is defined (test, metric, monitor, data-diff).
+    applies_when: {}
+    status: active
+
+  - id: dor-generated
+    text: If generated code is in scope, the change targets the template/source (e.g. .tt), never the generated output; regeneration is part of the slice.
+    applies_when: {platform: dotnet}
+    status: active
+
+  - id: dor-baseline
+    text: The branch/baseline target is confirmed (right branch; for external-state work the real system state matches the assumed baseline).
+    applies_when: {}
+    status: active

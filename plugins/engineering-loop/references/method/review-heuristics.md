@@ -1,0 +1,21 @@
+# Reviewer Catch-Heuristics (Shift-Left)
+
+These heuristics were mined from real human review catches on a large modernisation (the reaqtor .NET 10 work). Each represents a defect class a skilled reviewer caught downstream that a prosecutor lens can catch at source. Apply them during self-review and diff-prosecution, *before* any human sees the PR — every catch here is a review cycle not spent at the constraint.
+
+**Over-eager changes beyond declared intent.** The diff does more than the node declares: an "enable analyzer X" change that also reformats neighbours, renames locals, or "improves" adjacent code in passing. Every hunk must trace to the declared intent; anything else is undeclared scope — unreviewable risk, and drift by definition. The fix is removal, not justification after the fact.
+
+**Rule-contortion.** Code reshaped to silence a diagnostic rather than to address what the rule actually complains about. Two honest responses exist to any signal: fix the root cause, or suppress explicitly with a stated justification. Contorting code into an unnatural shape that happens to evade the rule is the dishonest third option — it degrades the code *and* hides the decision. If the rule is wrong here, say so in a suppression; never launder the disagreement through obfuscation.
+
+**Untested performance claims.** Any "faster", "cheaper", "lower allocation" assertion without a benchmark against the real workload. The canonical instance: frozen collections adopted because they sounded faster, measured 1.18–1.24× slower on the actual small lookup tables, reverted. A performance claim in a plan or commit message with no pre-registered evidence is an automatic rejection — this heuristic is the origin of the claim-forces-Tier-2 rule.
+
+**Residue.** Artifacts of the change process left in the product: files reduced to a comment-only husk after their contents moved, stray configuration from an abandoned approach, commented-out code, leftover TODO scaffolding, orphaned test helpers. The diff must contain the change and nothing that merely *happened during* the change.
+
+**Generated output edited instead of its template.** A hand-edit to a file produced by a generator, template, or tool — corrected in the output, doomed to be overwritten at the next generation. Locate the source of truth (the T4 template, the source generator, the codegen script) and change it there; the regenerated output then carries the fix legitimately. An edit that cannot survive regeneration is not a fix.
+
+**Deliberate-structure violations.** Restructuring that flattens intentional design — collapsing a deliberate multi-namespace split, merging files kept separate for a stated architectural reason, "simplifying" an inheritance seam that exists for extensibility. Chesterton's fence: never tear down structure without knowing why it stands; mechanical tidiness rules do not outrank recorded design intent. When a lint rule and a deliberate structure conflict, the structure wins and the rule gets a scoped suppression.
+
+**The untested half of a matrix.** A change verified on the convenient configuration only — "what about net472?" The risk-relevant matrix (target frameworks, platforms, build configurations, data shapes) must be enumerated at plan time and exercised at verify time; the configurations most likely to break are precisely the inconvenient ones nobody runs locally. A green result on half the matrix is a proxy, not an outcome.
+
+**Session-invented shorthand in committed comments.** Terminology coined during the working session — pet names for patterns, abbreviations from the conversation, references to "the new approach" — leaking into committed comments and docs where no future reader shares the context. Committed prose must stand alone: name things by their public, durable names.
+
+**"Use X where appropriate, not at all costs."** The adoption-boundary heuristic. Every tool, idiom, or API adoption needs an explicit boundary where it stops; a sweep that converts every possible site — including sites where the old form is clearer, faster, or semantically different — has replaced judgment with pattern-matching. An adoption PR must state its exclusion criteria, and the sites deliberately left unconverted are as much a part of the review as the conversions.
