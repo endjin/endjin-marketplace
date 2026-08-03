@@ -30,14 +30,34 @@ BLOCKING="$(jq -r '
 ' "$GRAPH" 2>/dev/null || echo 0)"
 [ "${BLOCKING:-0}" -ge 1 ] || exit 0
 
-# Count failed verdicts ONLY for nodes still mid-flight — a killed/blocked/done node's
-# permanent FAIL (e.g. a legitimately evidence-failed node) must not wedge future stops.
+# Count failed verdicts ONLY for Tier-2 nodes still mid-flight — a killed/blocked/done node's
+# permanent FAIL (e.g. a legitimately evidence-failed node) must not wedge future stops, and
+# only Tier 2 hard-blocks (lower tiers are advisory, enforced by skills rather than hooks).
 # ERROR counts as failed: a malformed/errored prosecution must never silently pass the guard.
-FAILED="$(jq -r '
-  ([.nodes[]? | select(.status=="executing" or .status=="executed" or .status=="verified") | .id]) as $active
+#
+# gates.json is append-only and shared across runs, so a raw "any failing verdict exists" count
+# would wedge stopping forever once anything had ever failed — even after a later PASS/GREEN/
+# RESOLVED was appended for the same gate. Reduce to the LATEST verdict per
+# (node, gate, prosecutor) first. `group_by` sorts its input, so the newest member of each group
+# is selected by highest original array index (`max_by(.key)` over `to_entries`) rather than by
+# relying on sort stability. Run-level verdicts (node == null, e.g. repo-wide CI) are not node-
+# scoped, so they are scoped to the current run explicitly; records predating the `run` field
+# are still counted rather than silently dropped.
+RUN_ID="$(jq -r '.run_id // empty' "$GRAPH" 2>/dev/null || true)"
+FAILED="$(jq -r --arg run "$RUN_ID" '
+  ([.nodes[]? | select(((.tier==2) or (.tier=="2"))
+      and (.status=="executing" or .status=="executed" or .status=="verified")) | .id]) as $active
   | input
-  | [.verdicts[]? | select((.verdict=="REJECT" or .verdict=="FAIL" or .verdict=="RED" or .verdict=="ERROR")
-      and ((.node == null) or (.node as $n | $active | index($n))))] | length
+  | [.verdicts[]?]
+  | to_entries
+  | map(select(
+      (($run == "") or (.value.run == null) or (.value.run == $run))
+      and ((.value.node == null) or (.value.node as $n | $active | index($n) != null))
+    ))
+  | group_by([.value.node, .value.gate, .value.prosecutor])
+  | map(max_by(.key).value)
+  | map(select(.verdict=="REJECT" or .verdict=="FAIL" or .verdict=="RED" or .verdict=="ERROR"))
+  | length
 ' "$GRAPH" "$GATES" 2>/dev/null || echo 0)"
 if [ "${FAILED:-0}" -ge 1 ]; then
   echo "engineering-loop: a Tier-2 node is mid-flight with failed/unmet gates in .engineering-loop/gates.json." >&2

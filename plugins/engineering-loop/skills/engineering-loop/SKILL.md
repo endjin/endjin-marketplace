@@ -75,7 +75,15 @@ commit — never mixed into a production slice; state files are exempt from decl
   prosecutor: "plan"|"diff"|"self"|null,
   verdict: "PASS"|"REJECT"|"FAIL"|"UNTESTABLE"|"GREEN"|"RED"|"STALLED"|"NO_RUNS"|"ABSENT"|"RESOLVED"|"OPEN"|"ERROR",
   detail: {...}, timestamp}` — appended to `.verdicts[]`, never clobbered. **`node` is
-  nullable** for run-level facts (e.g. repo-wide `ci: ABSENT`). **`prosecutor`, precisely:**
+  nullable** for run-level facts (e.g. repo-wide `ci: ABSENT`).
+  **Latest-verdict rule (the corollary of append-only, and how every reader MUST query this
+  file):** the current state of a gate is the LAST record appended for its
+  `(node, gate, prosecutor)` key — never "some matching record exists". Both directions are
+  load-bearing: a superseded `REJECT` must not wedge a node whose amended plan has since
+  passed, and a stale `PASS` must not satisfy a gate that has since failed. Array order is
+  append order and is the ordering authority (`timestamp` is for humans; it may tie, and is
+  written by the agent rather than the clock). `scripts/gate-check.sh` and
+  `scripts/loop-not-closed.sh` implement exactly this. **`prosecutor`, precisely:**
   `"plan"`/`"diff"` for spawned prosecutions; `"self"` for ANY unspawned Tier-1 self-pass
   (self-review AND self-audited drift); `null` for everything else — machine/observation
   gates (gauntlet, ci, review, evidence-designer runs) **and spawned non-prosecution

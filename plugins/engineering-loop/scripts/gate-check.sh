@@ -42,28 +42,62 @@ TIER="$(printf '%s' "$NODE_JSON" | jq -r '.tier // 1')"
 # Only Tier 2 hard-blocks; lower tiers are advisory (enforced by skills, not the hook).
 [ "$TIER" = "2" ] || exit 0
 
+# Fail open on an unreadable ledger, per the fail-open contract above: every jq read below
+# collapses to "no verdict" on a parse error, which would otherwise turn a single corrupt
+# gates.json into a permanent block on every commit in the repo. An ABSENT gates.json is a
+# different case and deliberately still gates — it means "no verdicts recorded yet", which is
+# exactly the state these gates exist to catch on a fresh run.
+if [ -f "$GATES" ] && ! jq -e . "$GATES" >/dev/null 2>&1; then
+  echo "engineering-loop: .engineering-loop/gates.json is unreadable (malformed JSON) — Tier-2 hook enforcement is failing open for this commit. Repair the ledger to re-arm the gates." >&2
+  exit 0
+fi
+
 fail() {  # $1 = message
   echo "engineering-loop gate [node $NODE_ID, Tier 2]: $1" >&2
   echo "Why: Tier-2 gates are mechanical, not advisory (threat-model.md). Cheapest next action is stated above; 'skip' requires a logged human accept-with-justification via the loop's control surface." >&2
   exit 2
 }
 
-# 1) Evidence gate: node with required_evidence must have a PASS verdict recorded.
+# gates.json is an APPEND-ONLY ledger shared across runs (state contract: "appended to
+# .verdicts[], never clobbered"), so every gate below keys off the LATEST verdict for the
+# node+gate rather than the existence of any matching verdict. Both directions matter: an
+# earlier attempt's REJECT must not wedge a node whose amended plan has since passed (the Plan
+# skill explicitly allows a v2 to pass), and an earlier PASS must not satisfy a gate that has
+# since failed. Array order is append order, so `last` is the current verdict — no sort is
+# involved, so this does not depend on jq sort stability. Node ids are repo-unique across runs
+# (state contract), so scoping by node is already scoping by run.
+latest_verdict() {  # $1 = gate, $2 = prosecutor ("" = any) → verdict string, "" if none recorded
+  jq -r --arg n "$NODE_ID" --arg g "$1" --arg p "$2" '
+    [ .verdicts[]?
+      | select(.node == $n and .gate == $g)
+      | select($p == "" or .prosecutor == $p)
+    ] | last | .verdict // empty
+  ' "$GATES" 2>/dev/null || true
+}
+
+# 1) Evidence gate: node with required_evidence must have PASS as its latest evidence verdict.
 REQ_EV="$(printf '%s' "$NODE_JSON" | jq -r '.required_evidence // false')"
 if [ "$REQ_EV" = "true" ]; then
-  EV_OK="$(jq -r --arg n "$NODE_ID" '[.verdicts[]? | select(.node==$n and .gate=="evidence" and .verdict=="PASS")] | length' "$GATES" 2>/dev/null || echo 0)"
-  [ "${EV_OK:-0}" -ge 1 ] || fail "BLOCKED: this node carries a quality-attribute claim but no PASS evidence verdict exists in gates.json. Run the pre-registered validation (evidence-designer) before committing."
+  EV="$(latest_verdict evidence '')"
+  case "$EV" in
+    PASS) ;;
+    '')   fail "BLOCKED: this node carries a quality-attribute claim but no evidence verdict exists in gates.json. Run the pre-registered validation (evidence-designer) before committing." ;;
+    *)    fail "BLOCKED: the latest evidence verdict for this node is $EV, not PASS. Re-run the pre-registered validation (evidence-designer) before committing." ;;
+  esac
 fi
 
-# 2) Plan-prosecution gate: a Tier-2 node must have survived plan prosecution.
-PP_REJ="$(jq -r --arg n "$NODE_ID" '[.verdicts[]? | select(.node==$n and .prosecutor=="plan" and .verdict=="REJECT")] | length' "$GATES" 2>/dev/null || echo 0)"
-PP_PASS="$(jq -r --arg n "$NODE_ID" '[.verdicts[]? | select(.node==$n and .prosecutor=="plan" and .verdict=="PASS")] | length' "$GATES" 2>/dev/null || echo 0)"
-[ "${PP_REJ:-0}" -eq 0 ] || fail "BLOCKED: plan prosecution recorded REJECT for this node. Address the cited lenses (gates.json) and re-plan; the panel does not re-roll on an unchanged plan."
-[ "${PP_PASS:-0}" -ge 1 ] || fail "BLOCKED: no plan-prosecution PASS verdict recorded for this Tier-2 node. Run plan-prosecutor before executing."
+# 2) Plan-prosecution gate: a Tier-2 node must have survived its most recent plan prosecution.
+PP="$(latest_verdict prosecution plan)"
+case "$PP" in
+  PASS) ;;
+  '')   fail "BLOCKED: no plan-prosecution verdict recorded for this Tier-2 node. Run plan-prosecutor before executing." ;;
+  *)    fail "BLOCKED: the latest plan prosecution recorded $PP for this node. Address the cited lenses (gates.json) and re-plan; the panel does not re-roll on an unchanged plan, so an amended plan needs a fresh prosecution." ;;
+esac
 
 # 3) Drift gate: staged files must fall inside the declared scope globs.
-DRIFT_FAIL="$(jq -r --arg n "$NODE_ID" '[.verdicts[]? | select(.node==$n and .gate=="drift" and .verdict=="FAIL")] | length' "$GATES" 2>/dev/null || echo 0)"
-[ "${DRIFT_FAIL:-0}" -eq 0 ] || fail "BLOCKED: the drift audit recorded FAIL (out-of-scope changes). Split the out-of-scope hunks into their own slice or re-declare scope with human sign-off."
+if [ "$(latest_verdict drift '')" = "FAIL" ]; then
+  fail "BLOCKED: the latest drift audit recorded FAIL (out-of-scope changes). Split the out-of-scope hunks into their own slice or re-declare scope with human sign-off."
+fi
 
 SCOPES="$(printf '%s' "$NODE_JSON" | jq -r '.declared_scope.files[]? // empty')"
 if [ -n "$SCOPES" ]; then
