@@ -1,0 +1,160 @@
+# Prosecutor lens registry — SEED (ships with the plugin, read-only).
+# The engine is fixed; the gate set is data. Prosecutors own no lenses of their own:
+# at startup they load this seed merged with the overlays, filtered by applies_when:
+#   user overlay:    ~/.engineering-loop/registry/lenses.yaml      (cross-repo learnings)
+#   project overlay: <repo>/.engineering-loop/registry/lenses.yaml (repo-local learnings)
+# Kaizen NEVER edits this file — it appends proposals to an overlay. Relaxing or
+# retiring any lens requires explicit human ratification (see self-learning-kaizen.md).
+#
+# Lenses are derived 1:1 from the Plan-phase universal truths (first-principles.md)
+# so no plan can silently violate one. A REJECT is void unless it cites the lens id
+# and quotes the artifact text that violates it.
+
+lenses:
+  - id: evidence
+    truth: 1  # "'Better' is a hypothesis, not a fact"
+    question: >-
+      Does any node claim a quality attribute (faster, smaller, safer, cheaper, more
+      reliable) without a pre-registered, falsifiable validation (or a committed
+      thinnest-slice-that-measures)? Quote the claim.
+    reject_if: a quality-attribute claim has no pre-registered evidence artifact
+    applies_when: {}          # universal
+    status: active
+    source_lesson: seed-frozen-collections   # reaqtor 43168be: adopted on idiom, measured 1.18-1.24x slower, reverted
+
+  - id: idiom-boundary
+    truth: 21  # "No tool is right everywhere"
+    question: >-
+      Does the plan adopt an idiom, pattern, or tool without an explicit allow/deny
+      decision and exclusion criteria ("use where appropriate", never "everywhere")?
+    reject_if: an adoption has no recorded boundary of where it stops
+    applies_when: {}
+    status: active
+    source_lesson: seed-primary-ctors        # reaqtor 520007e7: blanket adoption reverted by owner decision
+
+  - id: structure
+    truth: 15  # Chesterton's Fence
+    question: >-
+      Does any node restructure deliberate existing design to satisfy a mechanical
+      rule, or remove something whose purpose has not been established?
+    reject_if: deliberate structure is being reshaped to fit a rule, or a "fence" is removed unexplained
+    applies_when: {}
+    status: active
+    source_lesson: seed-namespace-splits     # reaqtor d0be9cc5: multi-namespace files split to force file-scoped ns, reverted
+
+  - id: scope-tightness
+    truth: 6  # "A change contains only what it declares"
+    question: >-
+      Is each node's declared scope atomic and tight — the smallest reviewable
+      mutation — or broad enough that nothing would ever count as drift? Are coupled
+      changes artificially fragmented across slices?
+    reject_if: scope is over-broad, post-hoc, or fragments a semantically coupled change
+    applies_when: {}
+    status: active
+    source_lesson: seed-over-eager-sweeps    # reaqtor 46465d74: sweep changed more than intended, reverted
+
+  - id: real-goal
+    truth: 20  # "Solve the real problem, not the literal ask"
+    question: >-
+      Does the plan solve the literal request where the underlying goal is different
+      or unverified? What evidence shows the real goal was confirmed?
+    reject_if: the plan optimises the literal ask and the real goal is unconfirmed
+    applies_when: {}
+    status: active
+    source_lesson: seed-archive-red-herring  # reaqtor #169: "ensure they run" was a red herring; real goal was IDE-quiet
+
+  - id: reversibility
+    truth: 7  # "Prefer two-way doors"
+    question: >-
+      Is every node classified one-way/two-way? Does any node mutate external state,
+      emit side effects, or delete data without an engineered reversal path or an
+      explicit forward-fix strategy?
+    reject_if: an irreversible effect has no reversal/forward-fix strategy or human go/no-go
+    applies_when: {}
+    status: active
+    source_lesson: seed
+
+  - id: blast-radius
+    truth: 8  # "Know the blast radius before you act"
+    question: >-
+      Does every node declare its impact surface (consumers, systems, data windows)?
+      Is a smaller-radius variant available and unjustifiably not chosen?
+    reject_if: blast radius undeclared, or a smaller-radius alternative is ignored without reason
+    applies_when: {}
+    status: active
+    source_lesson: seed
+
+  - id: contracts
+    truth: 16  # Hyrum's law
+    question: >-
+      Does any node change observable behaviour, an interface, or a column's meaning
+      without enumerating consumers (lineage, contract tests) and a compatibility plan?
+    reject_if: an observable change has no consumer enumeration or compat strategy
+    applies_when: {}
+    status: active
+    source_lesson: seed
+
+  - id: observability
+    truth: 5  # "You can only manage what you can observe"
+    question: >-
+      Does every node define, up front, how its success or failure will be observed
+      after shipping (test, metric, monitor, data-diff)?
+    reject_if: a node has no defined observation of its outcome
+    applies_when: {}
+    status: active
+    source_lesson: seed
+
+  - id: incremental
+    truth: 12  # Gall's law
+    question: >-
+      Does the plan contain a big-bang step never validated at smaller scale, where a
+      thinnest working slice could de-risk it first?
+    reject_if: a big-bang node has no preceding validated slice and no justification
+    applies_when: {}
+    status: active
+    source_lesson: seed
+
+  - id: falsifiability
+    truth: 1  # "'Better' is a hypothesis, not a fact" — evidence that cannot fail is not evidence
+    question: >-
+      Could this pre-registered experiment actually FAIL? Does the registration state a
+      concrete result that would disprove the claim, on the system's actual shapes, with an
+      achievable measurement? A design whose every outcome confirms the claim is invalid.
+    reject_if: no achievable result could disprove the claim, or the workload is synthetic-favourable rather than the system's actual shapes
+    applies_when: {phase: registration}   # prosecuted against a pre-registration, before execution
+    status: active
+    source_lesson: seed
+
+  # ---- diff-prosecution lenses (used by diff-prosecutor in addition to the above) ----
+
+  - id: drift
+    truth: 6
+    question: >-
+      Does the diff (or the previewed real mutation — plan/dry-run/data-diff for
+      external-state effects) contain anything outside the declared scope? Name each
+      out-of-scope hunk.
+    reject_if: any change is not covered by the declared scope
+    applies_when: {phase: diff}
+    status: active
+    source_lesson: seed
+
+  - id: prove-not-quiet
+    truth: 13  # "Address the cause, not the symptom"
+    question: >-
+      Was any signal (test, analyzer, lint, alert, DQ check) silenced, weakened,
+      skipped, or contorted around rather than fixed or honestly suppressed with
+      justification? Did test count, coverage, or assertion strength decrease?
+    reject_if: a signal is quiet but its complaint is intact, or the test tree weakened without prosecuted justification
+    applies_when: {phase: diff}
+    status: active
+    source_lesson: seed-analyzer-fudge       # reaqtor: "constructing a fudge just to shut it up is not acceptable" (idg10)
+
+  - id: sibling-sweep
+    truth: 11  # "Automation amplifies error"
+    question: >-
+      If a defect pattern was fixed once, do the same-shaped siblings remain unswept
+      elsewhere in the diff's blast radius?
+    reject_if: a flagged pattern has unswept sibling instances
+    applies_when: {phase: diff}
+    status: active
+    source_lesson: seed-sibling-sweep        # reaqtor 99f6edff: "same goes for the other places this was done" — 5 siblings

@@ -1,0 +1,23 @@
+{
+  "name": "engineering-loop",
+  "displayName": "Engineering Loop",
+  "description": "A self-learning, lean agentic engineering loop: evidence-gated planning, stacked atomic changesets, adversarial plan/diff prosecution, closed-loop CI and PR-review feedback, and kaizen that root-causes every defect to the gate that should have caught it.",
+  "author": {
+    "name": "endjin",
+    "url": "https://endjin.com"
+  },
+  "license": "MIT",
+  "keywords": [
+    "methodology",
+    "lean",
+    "agile",
+    "devops",
+    "stacked-prs",
+    "adversarial-review",
+    "evidence-gates",
+    "self-learning",
+    "kaizen",
+    "modernization"
+  ],
+  "repository": "https://github.com/endjin/endjin-marketplace"
+}
