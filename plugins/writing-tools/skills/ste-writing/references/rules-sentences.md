@@ -1,5 +1,7 @@
 # STE Part 1 — Sections 4–6: Sentences, Procedural writing, Descriptive writing
 
+> Provenance: condensed from the ASD-STE100 Specification, Issue 9, copyright © ASD (AeroSpace, Security and Defence Industries Association of Europe). The official specification is the authoritative text and is issued free of charge from https://www.asd-ste100.org — this file is a condensed working reference, not a substitute for it.
+
 ## Section 4 — Sentences (general rules for both writing types)
 
 STE has different sentence rules for procedures (Section 5) and descriptive text (Section 6).

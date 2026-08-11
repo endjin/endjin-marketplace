@@ -1,5 +1,7 @@
 # STE approved words (ASD-STE100 Issue 9)
 
+> Provenance: condensed from the ASD-STE100 Specification, Issue 9, copyright © ASD (AeroSpace, Security and Defence Industries Association of Europe). The official specification is the authoritative text and is issued free of charge from https://www.asd-ste100.org — this file is a condensed working reference, not a substitute for it.
+
 875 approved words. Format: `WORD (part of speech) — approved meaning`.
 An approved word may be used ONLY as the listed part of speech and ONLY with the listed meaning.
 Parts of speech: n, v, adj, adv, pron, art, prep, conj. Grep this file for a word instead of reading it fully.

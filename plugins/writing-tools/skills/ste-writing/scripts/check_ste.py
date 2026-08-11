@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """STE compliance checker for ASD-STE100 Issue 9.
 
-Usage:
-    python3 check_ste.py FILE [FILE ...] [--type procedural|descriptive|mixed]
-    cat text.md | python3 check_ste.py - [--type ...]
+Usage (from the skill root, as in SKILL.md):
+    python3 scripts/check_ste.py FILE [FILE ...] [--type procedural|descriptive|mixed]
+    cat text.md | python3 scripts/check_ste.py - [--type ...]
 
 Checks (advisory — a human/model must confirm; technical nouns and technical
 verbs are legitimately outside the dictionary):
@@ -32,6 +32,8 @@ ING_APPROVED = {"lighting", "opening", "routing", "servicing", "mating",
                 "troubleshooting", "warning"}
 LATIN = re.compile(r"\b(e\.g\.|i\.e\.|etc\.?|vs\.|et al\.|viz\.|cf\.)", re.I)
 CONTRACTION = re.compile(r"\b\w+'(t|s|re|ll|ve|d|m)\b", re.I)
+S_CONTRACTIONS = {"it's", "that's", "there's", "here's", "he's", "she's",
+                  "who's", "what's", "where's", "when's", "how's", "let's"}
 GENDERED = re.compile(r"\b(he|she|his|her|him|hers|himself|herself)\b", re.I)
 BE_FORMS = {"is", "are", "was", "were", "be", "been", "being"}
 HAVE_FORMS = {"have", "has", "had"}
@@ -60,7 +62,7 @@ NUMBER_WORDS = {"zero", "one", "two", "three", "four", "five", "six", "seven",
 
 
 def load_dictionary():
-    with open(os.path.join(HERE, "ste_dictionary.json")) as f:
+    with open(os.path.join(HERE, "ste_dictionary.json"), encoding="utf-8") as f:
         d = json.load(f)
     approved = {}
     for e in d["approved"]:
@@ -91,7 +93,7 @@ def strip_markup(text):
     text = re.sub(r"```.*?```", " ", text, flags=re.S)      # code blocks
     text = re.sub(r"`[^`]*`", " CODE ", text)                # inline code
     text = re.sub(r"https?://\S+", " URL ", text)            # urls
-    text = re.sub(r"^\s{0,3}#{1,6}\s*", "", text, flags=re.M)  # md headings
+    text = re.sub(r"^\s{0,3}#{1,6}\s*.*$", "", text, flags=re.M)  # md heading lines
     text = re.sub(r"[*_]{1,3}(\S(?:.*?\S)?)[*_]{1,3}", r"\1", text)  # emphasis
     return text
 
@@ -131,8 +133,11 @@ def check_text(text, doc_type, approved, unapproved):
         if ";" in ln:
             findings["mechanics"].append((i, "semicolon (rule 8.1: not permitted — write two sentences)"))
         m = CONTRACTION.search(ln)
-        if m and not re.search(r"'s\b", m.group(0)):  # possessive 's allowed (GR-8)
-            findings["mechanics"].append((i, f"contraction '{m.group(0)}' (rule 4.2: write words in full)"))
+        if m:
+            tok = m.group(0).lower()
+            # possessive 's is allowed (GR-8), but pronoun/adverb 's forms are contractions
+            if not tok.endswith("'s") or tok in S_CONTRACTIONS:
+                findings["mechanics"].append((i, f"contraction '{m.group(0)}' (rule 4.2: write words in full)"))
         m = LATIN.search(ln)
         if m:
             findings["mechanics"].append((i, f"Latin abbreviation '{m.group(0)}' (GR-6: use 'for example', 'that is', 'and so on')"))
@@ -247,9 +252,13 @@ def main():
     args = ap.parse_args()
     approved, unapproved = load_dictionary()
     for f in args.files:
-        text = sys.stdin.read() if f == "-" else open(f).read()
-        print(report(check_text(text, args.type, approved, unapproved),
-                     "stdin" if f == "-" else f))
+        if f == "-":
+            name, text = "stdin", sys.stdin.read()
+        else:
+            name = f
+            with open(f, encoding="utf-8") as fh:
+                text = fh.read()
+        print(report(check_text(text, args.type, approved, unapproved), name))
         print()
 
 

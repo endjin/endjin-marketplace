@@ -1,5 +1,7 @@
 # STE Part 1 — Sections 1–3: Words, Multi-word nouns, Verbs
 
+> Provenance: condensed from the ASD-STE100 Specification, Issue 9, copyright © ASD (AeroSpace, Security and Defence Industries Association of Europe). The official specification is the authoritative text and is issued free of charge from https://www.asd-ste100.org — this file is a condensed working reference, not a substitute for it.
+
 ## Section 1 — Words
 
 ### Rule 1.1 — Use words that are: approved in the dictionary, technical nouns, or technical verbs.

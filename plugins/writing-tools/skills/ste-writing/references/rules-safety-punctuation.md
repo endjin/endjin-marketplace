@@ -1,5 +1,7 @@
 # STE Part 1 — Sections 7–9: Safety instructions, Punctuation and word count, Writing practices
 
+> Provenance: condensed from the ASD-STE100 Specification, Issue 9, copyright © ASD (AeroSpace, Security and Defence Industries Association of Europe). The official specification is the authoritative text and is issued free of charge from https://www.asd-ste100.org — this file is a condensed working reference, not a substitute for it.
+
 ## Section 7 — Safety instructions
 
 Safety instructions tell readers that procedures or work steps can be dangerous or cause damage. Descriptive writing usually does not include them, unless quoted or the description itself covers safety risks.
