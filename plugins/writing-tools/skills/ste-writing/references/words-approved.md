@@ -1,0 +1,880 @@
+# STE approved words (ASD-STE100 Issue 9)
+
+875 approved words. Format: `WORD (part of speech) — approved meaning`.
+An approved word may be used ONLY as the listed part of speech and ONLY with the listed meaning.
+Parts of speech: n, v, adj, adv, pron, art, prep, conj. Grep this file for a word instead of reading it fully.
+
+- A (art) — Function word: indefinite article
+- ABLE (adj) — interchange
+- ABOUT (prep) — Concerned with For other meanings, use: APPROXIMATELY (adv) DRAIN APPROXI 2 LITER FROM TH AROUND (prep)
+- ABOVE (prep) — In (or to) a position farther up than something For other meanings, use: MORE THAN
+- ABRASIVE (adj) — That can remove material by friction
+- ABSORB (v) — 1. To take up or into 2. To decrease the effect of
+- ACCEPT (v) — To make a decision that ACCE something is satisfactory IT
+- ACCESS (n) — The ability to go into or near
+- ACCIDENT (n) — An occurrence that TO P causes injury or damage ACCI SURE ARE
+- ACCIDENTAL (adj) — That does not occur on purpose
+- ACCIDENTALLY (adv) — That does not occur on purpose
+- ACCURATE (adj) — Exact
+- ACCURATELY (adv) — Exactly
+- ACROSS (prep) — From one side to the other side
+- ACTIVATE (v) — To make a system, function, or feature ready for operation For other meanings, use: START (v)
+- ACTIVE (adj) — A system, function, or feature in a state of action
+- ADAPT (v) — To change or adjust to that which is necessary
+- ADD (v) — To increase the number, dimension, or quantity
+- ADJACENT (adj) — That which is near to an object, with no other object of the same type between the two
+- ADJACENT TO (prep) — To be near to an object, with no other object of the same type between the two
+- ADJUST (v) — To put in or come to a specified position or value
+- ADJUSTABLE (adj) — That you can adjust
+- ADJUSTMENT (n) — The effect of adjusting
+- AFT (adj) — At or nearer to the rear of an air or sea vehicle
+- AFT (adv) — In the direction of the rear of an air or sea vehicle
+- AFT OF (prep) — At a position nearer to the rear
+- AFTER (conj) — That follows a specified time, sequence, or operation
+- AFTER (prep) — That follows a specified time, sequence, or operation
+- AGAIN (adv) — One more occurrence
+- AGAINST (prep) — In contact with
+- AGENT (n) — One of a group of materials made to do a specified task
+- AGREE (v) — To be consistent with
+- AID (n) — Help that is given
+- AIRBORNE (adj) — In, or used in, flight
+- AIRFLOW (n) — A flow of air
+- ALIGN (v) — To put or come into a specified position in relation to a line
+- ALL (adj) — Full quantity
+- ALMOST (adv) — Near the limit or the value
+- ALONG (prep) — In a line parallel with the length or direction of
+- ALSO (adv) — In addition
+- ALTERNATIVE (adj) — That gives a choice
+- ALTERNATIVE (n) — One of two or more A objects or processes that CA have the same or almost ALTE the same properties or FU functions JE
+- ALTHOUGH (conj) — In spite of the fact that
+- ALWAYS (adv) — At all times
+- AN (art) — Function word: indefinite article
+- ANALOG (adj) — Of data given by pointers THE and dials HAS IND
+- AND (conj) — Function word used to MA connect words, phrases, FL or clauses RE AI HA TH
+- ANGULAR (adj) — That has one or more angles
+- APART (adv) — At a distance (not specified) from
+- APPLICABLE (adj) — Correct or satisfactory for the task
+- APPLY (v) — 1. To put or spread something on 2. To use something (for example, pressure, force, load) to cause an effect
+- APPROVAL (n) — That which permits a person or a thing to do something
+- APPROVED (adj) — Permitted by an authority DO IN AR
+- APPROXIMATE (adj) — Almost correct or accurate
+- APPROXIMATELY (adv) — Almost correct or accurate
+- AREA (n) — A specified surface or location
+- ARM (v) — 1. To install armaments 2. To prepare for SET automatic operation “CL CIR
+- AROUND (prep) — On all sides of For other meanings, use: APPROXIMATELY (adv) THE TEST APPROXIM FEET FRO DOOR.
+- ARROW (n) — A mark that has a point to show direction
+- AS (prep) — In the manner of, to the same quantity, equally
+- ASSEMBLE (v) — To attach, connect, or put together the parts of something
+- ASSEMBLY (n) — Items that are connected REM for a specified function BRA FRO
+- AT (prep) — Function word that shows the location, position, direction, or time that something occurs
+- ATTACH (v) — To stay together or to cause different items to stay together
+- AUTHORITY (n) — An official organization that gives approval to something
+- AUTOMATIC (adj) — That operates without other input
+- AUTOMATICALLY (adv) — That operates without other input
+- AUXILIARY (adj) — 1. That operates in a secondary function 2. That gives help
+- AVAILABLE (adj) — Prepared or supplied for you to use
+- AWAY FROM (prep) — In or to a different position or direction
+- AXIAL (adj) — Related to an axis
+- AXIALLY (adv) — Related to an axis
+- BACK (adv) — To an initial condition
+- BAD (adj) — Not satisfactory Do not use this word if more accurate and clear words are available.
+- BALANCE (v) — To make equal
+- BARE (adj) — Without a surface layer or protection
+- BASIC (adj) — Approved minimum
+- BE (v) — 1. To occur, exist 2. To have a property, to be equal to
+- BECAUSE (conj) — As a result of
+- BECAUSE OF (prep) — As a result of
+- BECOME (v) — To come to be
+- BEFORE (conj) — That precedes a specified time, sequence, or operation
+- BEFORE (prep) — That precedes a specified time, sequence, or operation
+- BEHIND (prep) — In a position at the rear of
+- BELOW (prep) — In (or to) a position farther down than something For other meanings, use: LESS THAN
+- BEND (n) — The area where something is bent
+- BEND (v) — To change or cause to change from straight to curved
+- BETWEEN (prep) — Related to something before and after in time or position
+- BLEED (v) — To let a gas out of
+- BLOCKAGE (n) — That which prevents correct operation
+- BLOCKED (adj) — That prevents correct operation
+- BLOW (v) — To cause gas to move
+- BLUNT (adj) — Not sharp
+- BOND (n) — 1. A connection between structural components for electrical continuity 2. A firm connection with another material
+- BOND (v) — 1. To make an electrical bond 2. To attach firmly or become firmly attached with another material
+- BOTTOM (adj) — That is lowermost
+- BOTTOM (n) — The lowermost position
+- BREAK (v) — To cause to separate or become separated into parts by force
+- BREATHE (v) — To get gas into or out of the lungs
+- BRIGHT (adj) — That gives much light
+- BRIGHTLY (adv) — In a bright manner
+- BUBBLE (n) — A small quantity of gas in a liquid or a solid
+- BURN (v) — 1. To cause or undergo T combustion F 2. To cause injury or damage through heat
+- BUT (conj) — On the contrary
+- BY (prep) — Mathematical function word
+- BYPASS (v) — To change a circuit so that it goes past something instead of through it
+- CALCULATE (v) — To find a result by mathematics
+- CALIBRATE (v) — To measure and adjust the precision of something
+- CALIBRATION (n) — The procedure that calibrates
+- CAN (v) — Auxiliary modal verb that means to be possible, to be able to, or to be permitted to Do not use COULD (v) to show possibility
+- CANCEL (v) — 1. To do the necessary I steps to stop a A process T T S 2. To remove the validity of something
+- CANNOT (v) — Auxiliary modal verb that means to not be able to MO
+- CAPACITY (n) — The maximum quantity that something can hold or make
+- CAREFUL (adj) — With precaution
+- CAREFULLY (adv) — In a careful manner
+- CATCH (v) — To stop or prevent the movement of something For other meanings, use: COLLECT (v)
+- CAUSE (n) — Something that brings about a result
+- CAUSE (v) — To be the cause of
+- CHANGE (n) — That which occurs when something changes
+- CHANGE (v) — To become or to cause to become different For other meanings, use: REPLACE (v)
+- CHARGE (v) — To accumulate or add electrical energy For other meanings, use: FILL (v) PRESSURIZE (v)
+- CHECK (n) — The procedure you do to make sure that something operates correctly or has no defects
+- CHEMICAL (adj) — Related to a chemical
+- CHEMICALLY (adv) — Related to a chemical
+- CIRCULAR (adj) — That has the shape of a circle
+- CLEAN (adj) — That does not include dirt or unwanted material
+- CLEAN (v) — To remove dirt or unwanted materials
+- CLEAR (adj) — 1. Without blockage or interference 2. Easy to understand and without ambiguity For other meanings, use: TRANSPARENT (adj)
+- CLEARANCE (n) — The space between two objects that must be clear to make sure that they do not touch
+- CLEARLY (adv) — In a clear and not ambiguous manner
+- CLICK (n) — A short, sharp sound
+- CLOCKWISE (adv) — In the direction in which the hands of a clock turn when seen from the front
+- CLOGGED (adj) — Blocked with unwanted material.
+- CLOSE (v) — 1. To move together, CL or to move to a IN position that stops or prevents materials from going in or out 2. To operate a circuit breaker to make an electrical circuit
+- CODE (n) — A sequence of symbols, letters, and/or numbers used for identification
+- COIL (n) — A sequence of loops
+- COLD (adj) — At low temperature
+- COLLECT (v) — To come, or cause to come, together in one location
+- COLOR (n) — A property of light
+- COME (v) — To move to your locatio
+- COME ON (v) — To become bright with light when an internal power source is energized
+- COMMUNICATION (n) — The exchange of information through a common system of symbols, signs, or sounds
+- COMPARE (v) — To examine for differences
+- COMPATIBLE (adj) — hat can operate ogether satisfactorily or e used together safely
+- COMPLETE (v) — To bring to an end
+- COMPLETED (adj) — Successfully brought to an end
+- COMPONENT (n) — A part, subassembly, or unit that has a specified function
+- COMPRESS (v) — To decrease or cause to COMP decrease in dimension SPRI or volume CARE THE
+- CONCENTRATION (n) — The strength of IN something contained in a CON mixture THI POI
+- CONCENTRIC (adj) — That has a common center
+- CONDENSATION (n) — The result when a gas changes into a liquid
+- CONDITION (n) — 1. Something that is necessary for what occurs 2. The state of an item DO UNI Use IF (conj) for “on the condition that.”
+- CONNECT (v) — To come together or cause to come together to make one unit or system
+- CONNECTION (n) — That which connects or is connected
+- CONSTANT (adj) — That continues to be the same, without change
+- CONSTANTLY (adv) — Incessantly
+- CONTACT (v) — To start communication For other meanings, use: TOUCH (v)
+- CONTAIN (v) — To have in something or hold in something
+- CONTAINER (n) — Something that holds fluids, materials, or objects
+- CONTAMINATION (n) — Unwanted change of the DUS original condition of a material because of chemical or physical agents or a material that causes such a change
+- CONTENTS (n) — Something that is in a container
+- CONTINUE (v) — To stay or keep in current condition or operation
+- CONTINUOUS (adj) — at continues
+- CONTINUOUSLY (adv) — In a continuous manner
+- CONTOUR (n) — The outer line of something
+- CONTROL (n) — Something that controls
+- CONTROL (v) — To give or send signals that adjust, operate, or keep something to a limit, or that cause something to operate
+- COOL (adj) — Moderately cold
+- COPY (n) — An object made the same as another object
+- CORNER (n) — The point or the angle made when lines, sides, or edges touch
+- CORRECT (adj) — That agrees with all that is necessary to the maximum
+- CORRECT (v) — To make correct
+- CORRECTION (n) — A change to make something correct
+- CORRECTLY (adv) — In a correct manner
+- COUNT (v) — To add the number of objects or occurrences to get a total In the opposite direction
+- CURVE (n) — The shape of T something which is C bent but which has no M angles
+- CUT (v) — 1. To divide into C parts T L 2. To remove with a C sharp tool T
+- CYCLE (n) — One complete S sequence of operation T M
+- DAMAGE (n) — The result of an occurrence that causes deterioration of the condition of something
+- DAMAGED (adj) — That has or can be affected by damage
+- DANGEROUS (adj) — at can cause injury, IT IS D mage to health or can USE AIR ll SYSTEM.
+- DATA (n) — 1. Known facts 2. Numbers and symbols used by computers You can also use DO the singular. THE UNI DAT
+- DATE (n) — The time at which an event occurs
+- DE-ENERGIZE (v) — To remove electrical power from
+- DEACTIVATE (v) — To make a system, function, or feature no longer ready for operation For other meanings, use: STOP (v)
+- DECISION (n) — The result after you th about a problem
+- DECREASE (v) — To make or become smaller or lower
+- DEDICATED (adj) — That is used only for one A purpose NE IN UN
+- DEEP (adj) — That has a specified depth
+- DEFECTIVE (adj) — Unserviceable for operation
+- DEFLATE (v) — To make or become smaller as a result of depressurization
+- DEFUEL (v) — To remove fuel
+- DEPLOY (v) — To move or cause to move from a specified position of storage and into operation
+- DEPTH (n) — The distance from the top down, from the surface down, from the front surface to the rear surface
+- DETERIORATION (n) — A worse condition
+- DEVICE (n) — Something used to do a task
+- DIAGONALLY (adv) — In a diagonal direction
+- DIFFERENCE (n) — That which is different between two quantities, numbers, or functions
+- DIFFERENT (adj) — Not the same
+- DIFFERENTLY (adv) — In a different manner
+- DIGITAL (adj) — Related to digits
+- DIGITALLY (adv) — Given by digits
+- DIM (adj) — Not bright
+- DIMENSION (n) — The result when something is measured in one direction
+- DIMLY (adv) — Not bright
+- DIRECTION (n) — The line on which something moves or is pointed
+- DIRECTLY (adv) — In a direct procedure or by direct effect
+- DIRTY (adj) — Not clean
+- DISARM (v) — 1. To remove armaments 2. To prevent automatic DISA operation DUMP
+- DISASSEMBLE (v) — To take an assembly apart
+- DISCARD (v) — To not use again
+- DISCONNECT (v) — To separate something from the thing that it is connected to, or to become separated
+- DISENGAGE (v) — To release or become BE released from something TH that engages DI CL
+- DISPLAY (n) — A visual indication
+- DISTANCE (n) — The dimension between two points or objects
+- DIVIDE (v) — 1. To separate into parts or groups 2. To do mathematical division
+- DO (v) — 1. To complete a procedure, task, or step 2. As an auxiliary verb a. As part of a negative command or statement b. As part of a question
+- DOWN (adj) — In a position below
+- DOWN (adv) — To a position below
+- DOWN (prep) — To a position below
+- DOWNSTREAM (adj) — In the direction of the flow
+- DOWNSTREAM (adv) — In the direction of the flow In the direction of the
+- DRAIN (v) — To remove liquid
+- DRINK (v) — To consume liquid For safety instructions, use: SWALLOW (v)
+- DROP (n) — A small quantity of liquid in a spherical shape
+- DRY (adj) — Without liquid or moisture
+- DRY (v) — To remove liquid or moisture, or to become dry
+- DURING (prep) — In or for a specified time
+- EACH (adj) — Every one of two or more objects or persons, seen together as a group but identified separately
+- EACH (pron) — Every one of two or more objects or persons, seen together as a group but identified separately
+- EACH OTHER (pron) — Each of two or more in reciprocal action or relation
+- EASILY (adv) — Without difficulty
+- EASY (adj) — Without difficulty
+- EAT (v) — To consume food For safety instructions, use: SWALLOW (v)
+- EDGE (n) — A line that is the THE intersection of two BET surfaces of a solid object OF THE NOT 0.0
+- EFFECT (n) — The result of a cause
+- EJECT (v) — To move or to cause a person or item to move from an aircraft or equipment with force
+- ELECTRIC (adj) — Operated by electricity
+- ELECTRICAL (adj) — Related to electricity
+- ELECTRICALLY (adv) — Related to or operated by electricity Related to
+- ELECTRONIC (adj) — Related to or operated by electronics lated to or operated electronics
+- EMERGENCY (n) — A condition that occurs suddenly and is dangerous
+- EMPTY (adj) — Without contents
+- END (n) — Where time, distance, or E sequence are completed SHA O
+- ENERGIZE (v) — To supply electrical power to
+- ENGAGE (v) — To correctly align and come together
+- ENTRANCE (n) — An opening to go into a space
+- ENTRY (n) — A record of an occurrence
+- EQUAL (adj) — The same dimension, quality, quantity, or number
+- EQUALLY (adv) — The same dimension, quality, quantity, or number
+- EQUIPMENT (n) — The objects or tools used for operation and maintenance
+- EQUIVALENT (adj) — as the same roperties, functions, or alues
+- EQUIVALENT (n) — Something that has the same properties, functions, or values
+- ERASE (v) — To remove data from a medium
+- ERROR (n) — The difference from that which is correct or accurate
+- ESTIMATE (n) — A calculated, approximate result
+- EXAMINE (v) — To look carefully at
+- EXAMPLE (n) — Something from a group which has the same qualities as the group
+- EXHAUST (n) — The gas from an engine
+- EXIT (n) — An opening to go out of a space
+- EXPAND (v) — To increase in dimension, volume, or time
+- EXPIRED (adj) — More than the permitted life
+- EXPLOSION (n) — The effect when an explosive material quickly releases its energy
+- EXPLOSIVE (adj) — That can cause an explosion
+- EXTEND (v) — To increase, or cause FU something to increase, in JA dimension or range
+- EXTENSION (n) — 1. The action when something extends 2. The result when something extends
+- EXTERNAL (adj) — Of, or on, the outer side
+- EXTERNALLY (adv) — Of, or on, the outer side
+- EXTINGUISH (v) — To stop burning For lights or lamps, use: GO OFF BE OFF
+- FACE (n) — The front surface of an object This word is a technical noun when it refers to a part of the body.
+- FACT (n) — Something that occurred GET or is correct ABOU FROM
+- FALL (v) — To move down by the force of gravity
+- FAR (adj) — At or to a relatively lar distance
+- FAST (adj) — At high speed
+- FEATHER (v) — To put a propeller to a position of minimum drag
+- FEEL (v) — To touch to find
+- FILL (v) — To put into a container or FI a space to the maximum METHAN level or, if specified, to a given level, pressure, or quantity
+- FILTERED (adj) — That has gone through a DRY filter LOW- FILT
+- FIND (v) — To discover, to examine something so that you know
+- FINISH (n) — The result of a finishing procedure
+- FIRE (n) — The light and/or heat from a material when it burns
+- FIRE (v) — To ignite, or to operate items that contain an explosive material
+- FIRST (adv) — Before other persons or things
+- FIT (n) — The relation between two related parts, a limit of tolerance
+- FLAME (n) — Burning gas
+- FLAMMABLE (adj) — That burns easily
+- FLANGE (n) — An end surface at an angle
+- FLASH (v) — To come on and go off frequently
+- FLAT (adj) — That has a continuous surface in the same plane
+- FLEXIBLE (adj) — That can easily bend again and again
+- FLIGHT (n) — The time an aircraft is in the air
+- FLOW (n) — A continuous movement of fluid
+- FLOW (v) — To move as a fluid moves
+- FLUID (n) — Liquid or gas
+- FLUSH (adj) — Of a surface that is level or continuous with another surface
+- FLUSH (v) — To remove something or FLUSH to operate with a flow of WIT liquid FUE
+- FOLD (v) — To double over or to cause to double over on itself
+- FOLLOW (v) — To come after, to go after For other meanings, use: OBEY (v)
+- FOR (prep) — Function word that shows purpose, intent, time, result, or the obje of an action Used to introduce something chosen as a typical case
+- FORWARD (adj) — Nearer to the front
+- FORWARD (adv) — In the direction of the front
+- FORWARD OF (prep) — At a position nearer to the front
+- FREE (adj) — That can move easily Do not use compound adjectives with free, for example lintfree, dustfre unless they are technical nouns.
+- FREELY (adv) — That can move easily
+- FREEZE (v) — To go or cause to go to a FRE temperature below the BU freezing point of a liquid FO (usually of water)
+- FREQUENT (adj) — That occurs or is found often at short intervals
+- FREQUENTLY (adv) — At frequent or short intervals
+- FROM (prep) — Function word that shows a point of departure for movement, time, distance, action, or separation
+- FRONT (adj) — Nearer to the person that THE looks or a reference LIG point FAC COM Refer also to IN FRONT OF.
+- FRONT (n) — The front part or the front C surface T F S
+- FULL (adj) — At or related to maximum travel, length, quantity, or detail
+- FULLY (adv) — At or related to maximum travel, length, quantity, or detail
+- FUNCTION (n) — Action or activity that a person or thing does
+- GAS (n) — A fluid that has no shap or volume and that can expand
+- GENERAL (adj) — Of, or related to something as a whole, not detailed
+- GET (v) — To obtain, to come into the state of having Do not use this word to mean BECOME, GO, DECREASE, INCREASE. Refer to rule 9.2 and the entries from “get” until “get to” that follow.
+- GIVE (v) — To provide
+- GLOSSY (adj) — Smooth and shiny
+- GO (v) — To move to or from something
+- GO OFF (v) — To become dark when T an internal power source L is de-energized
+- GOOD (adj) — That is satisfactory
+- GRADUALLY (adv) — lowly and continuously
+- GROOVE (n) — A long channel that is not wide
+- GROUND (n) — The surface of the earth
+- GROUND (v) — To connect to the ground GR or to a large object of TA zero potential
+- GROUP (n) — Objects that are related
+- HANG (v) — To attach or to be attached to something above with no support from below
+- HARD (adj) — Not easy to cut, not easy to go into or through
+- HAVE (v) — To possess as a part or quality
+- HEAD (n) — The top of something
+- HEAR (v) — To know by sound in the MAK ear YOU SIG CRE
+- HEAT (n) — The condition or quality of being hot
+- HEAVY (adj) — That has a large mass, weight, or force
+- HEIGHT (n) — The vertical distance
+- HELP (v) — To make something easier or better
+- HERE (adv) — In this position
+- HIGH (adj) — That is of large value
+- HIT (v) — To touch suddenly and with much force
+- HOLD (v) — 1. To continue to have in the hand or grip 2. To continue to have in a specified location, position, or condition
+- HOLE (n) — An empty space in a solid object
+- HORIZONTAL (adj) — Parallel to the horizon or AD a baseline UN HO
+- HORIZONTALLY (adv) — In a horizontal position
+- HOT (adj) — At a high temperature
+- HOW (adv) — By which manner
+- HYDRAULIC (adj) — Related to, or operated by, pressurized liquid
+- HYDRAULICALLY (adv) — With hydraulic power
+- IDENTIFICATION (n) — Something that identifies an object
+- IDENTIFY (v) — 1. To use a specified code or marking to supply with an identity 2. To show an identity For other meanings, use: FIND (v)
+- IF (conj) — In the event that, on the condition that, in case o
+- IGNORE (v) — Not to think about something, not to do something about
+- ILLUMINATE (v) — To make something visible with an external light source For lights or lamps, use: COME ON BE ON
+- IMMEDIATELY (adv) — Without a gap of time or space
+- IMPORTANT (adj) — That has a significant effect
+- IN (adv) — To, or into a location or position
+- IN (prep) — Function word that shows location, position, condition, time, or limit
+- IN FRONT OF (prep) — In a position ahead of
+- IN PROGRESS (adv) — Occurring
+- INBOARD (adj) — Nearer to the longitudinal axis
+- INBOARD (adv) — In or to a position nearer T to the longitudinal axis R I
+- INBOARD OF (prep) — At a position nearer to the longitudinal axis
+- INCIDENT (n) — An important occurrence RECO that can cause damage INCIDE or have dangerous FOUN results
+- INCLUDE (v) — To make, or to be, part of
+- INCORRECT (adj) — Not correct
+- INCORRECTLY (adv) — In an incorrect manner
+- INCREASE (v) — To make or become larger or higher in value
+- INCREMENT (n) — One of a sequence of regular operations done one after the other, to increase or decrease an adjustable quantity
+- INDEPENDENTLY (adv) — Without a relation with
+- INDICATION (n) — Something that is shown MAKE INDI CORR
+- INFLATE (v) — To make or become larger as a result of pressurization by a gas
+- INFORMATION (n) — Data collected and made TH available for a specified function
+- INITIAL (adj) — That is related to the start
+- INITIALLY (adv) — At the start
+- INJURY (n) — Damage to a person
+- INNER (adj) — Nearer to the center of an object
+- INPUT (n) — The data, power, or energy put into equipment or a system
+- INSPECTION (n) — The procedure which U compares an object with D its standard or specification
+- INSTALL (v) — To attach an item in or t a second item
+- INSTALLATION (n) — The procedure which installs an item
+- INSTRUCTION (n) — A command that you must obey
+- INSTRUMENT (n) — An item which measures AL and/or shows IN ON QU
+- INSULATION (n) — A material that helps to prevent the movement of Y energy
+- INTENSITY (n) — The quantity of strength, force, or energy
+- INTERCHANGE (v) — put or use each of o things in the place of ther without change That you can
+- INTERFACE (n) — The connection between two systems or components
+- INTERMITTENT (adj) — That stops and starts again, not continuous
+- INTERMITTENTLY (adv) — In an intermittent manner TH IN
+- INTERNAL (adj) — Of, or on, the inner side and inner space
+- INTERNALLY (adv) — f, or on, the inner side nd inner space
+- INTERVAL (n) — A distance or gap between two points in space or time
+- INTO (prep) — 1. Movement to something and access to it 2. Function word that shows change, condition, result
+- INVESTIGATION (n) — An official and accurate inquiry or research
+- IRREGULAR (adj) — Not regular
+- IRREGULARLY (adv) — Not regularly
+- ISOLATE (v) — To prevent a supply or connection to
+- IT (pron) — 1. That refers to a thing C that was previously THE mentioned D E 2. That refers to an explicit or implicit state of affairs or circumstances
+- ITEM (n) — A thing that is determined or specified
+- ITS (adj) — Belonging to a thing
+- JOINT (n) — The area at which two surfaces or edges touch or are attached
+- KEEP (v) — To continue to have or hold
+- KILL (v) — To cause death
+- KNOW (v) — To be sure of data, to have data ready to use
+- LAMINATED (adj) — Made of laminations
+- LAMINATION (n) — Layers of one or more materials bonded together
+- LARGE (adj) — More than average in dimension, quantity, or capacity
+- LAST (adj) — That comes at the end
+- LAST (adv) — After other persons or things
+- LATCH (v) — To hold something in position with a latching device
+- LATERAL (adj) — Related to or on the side AD LE
+- LATERALLY (adv) — In a lateral direction
+- LAYER (n) — A material applied to a APP surface or put on, or OF below, a second material COM BAR
+- LEAK (n) — A crack, gap or hole which lets fluid or light go into or come out of something
+- LEAKAGE (n) — The quantity of material that goes through a leak
+- LEFT (adj) — On the west side when you look north
+- LENGTH (n) — 1. The distance from one end to the other end 2. The longer or longest TH of the three TH dimensions of an - object - -
+- LESS (adj) — Of smaller dimension, value, quantity, volume, or number
+- LET (v) — To give opportunity
+- LEVEL (adj) — Horizontal to a known datum
+- LEVEL (n) — A horizontal line, plane, surface, or condition
+- LIFE (n) — The time during which you can use an item or object
+- LIFT (v) — To move something up
+- LIGHT (adj) — That has a small mass, weight, or force For other meanings, use: THIN (adj) SMALL (adj)
+- LIGHTING (n) — That which gives light to
+- LIGHTLY (adv) — In a light manner
+- LIMIT (n) — A specified maximum or minimum quantity, number, time, or distance
+- LINEAR (adj) — In a straight line
+- LINEARLY (adv) — In a straight line
+- LIQUID (adj) — That has the properties of a liquid
+- LIQUID (n) — A material that is not a gas or a solid
+- LISTEN (v) — To use your ears to hear LIST or find SIGN
+- LIVE (adj) — That includes explosive material For electrical systems, use: ENERGIZE (v)
+- LOCAL (adj) — Applicable to a given location or position
+- LOCALLY (adv) — Applicable to a given location or position
+- LOCATION (n) — A place or site that you can find
+- LOCK (v) — To attach something, or hold it in position with a locking device
+- LONG (adj) — That has a specified or large length, or a specified or large duration WHILE (conj) NOT… AT THIS TIME UNTIL…NOT
+- LONGITUDINAL (adj) — Related to the longitudinal axis
+- LOOK (v) — To use your eyes to see or find
+- LOOP (n) — A circular shape made in MAK a flexible material WIR UNI
+- LOOSE (adj) — 1. On, in, but not attached 2. Not tight For other meanings, use: TENSION (TN)
+- LOOSELY (adv) — Not tightly
+- LOOSEN (v) — To cause to be not tight
+- LOW (adj) — That is of small value
+- LOWER (v) — To move something down
+- LUBRICATE (v) — To apply lubricant
+- MAGNETIC (adj) — Related to the propertie of a magnet
+- MAGNETICALLY (adv) — In a magnetic manner
+- MAINTENANCE (n) — he servicing and/or the epair of something to eep it in the correct ondition
+- MAKE (v) — To manufacture, to cause to occur or to become
+- MAKE SURE (v) — To verify and/or do the necessary steps
+- MALFUNCTION (n) — correct operation
+- MANDATORY (adj) — at which you must do, THIS SERV e, or obey BULLETIN MANDATORY If you want to use this word in procedures, think about a necessary safety instruction.
+- MANUAL (adj) — Operated with the hands IF TH CONTR OPERA MANUA
+- MANUAL (n) — A publication that gives data related to a special subject
+- MANUALLY (adv) — With your hands
+- MANY (adj) — Of a large number If it is possible, give the range, number, or quantity.
+- MARK (n) — Something that you THE R make or is made to show SHOW an identification, STEER location, or direction 35 DE
+- MASS (n) — The quantity of matter that is in an object and relates to its weight. The equivalent of inertia
+- MATERIAL (n) — A substance from which an item is made, or an item that is necessary to do a task.
+- MATING (adj) — Made to touch Not glossy
+- MAXIMUM (adj) — Related to the largest dimension, quantity, number, or value
+- MAXIMUM (n) — The largest dimension, quantity, number, or value
+- MEASURE (v) — To find the dimensions, capacity, or quantity of something
+- MECHANICAL (adj) — Related to or operated with a mechanism
+- MECHANICALLY (adv) — In a mechanical manner
+- MECHANISM (n) — An assembly of mechanical parts that are made to operate together
+- MEDICAL (adj) — Related to medicine
+- MELT (v) — To change or to cause something to change from solid to liquid because of heat
+- METHOD (n) — A special type of procedure used to get a specified result
+- MIDDLE (adj) — At a point that is REMO between two other points BELL
+- MIDDLE (n) — A point that is at or near the center
+- MINIMUM (adj) — Related to the smallest dimension, quantity, number, or value
+- MINIMUM (n) — The smallest dimension, LET quantity, number, or FOR value 1 HO
+- MINUS (prep) — With the subtraction of
+- MISSING (adj) — That is not there
+- MIX (v) — 1. To put together two or MI more materials to become one 2. To become combined
+- MIXTURE (n) — The result that you get when you mix materials
+- MOBILE (adj) — That is made to move easily
+- MODE (n) — A special condition of operation
+- MODERATE (adj) — Between low and high values
+- MODERATELY (adv) — In a moderate manner
+- MOIST (adj) — Moderately wet
+- MOMENTARILY (adv) — For a short time
+- MONITOR (v) — To do a check at something for a period of I time to find if there is a change
+- MOOR (v) — To hold something in position with ropes and cables
+- MORE (adj) — A large quantity of
+- MORE (adv) — To a larger degree
+- MOST (adj) — To the largest quantity of
+- MOST (adv) — To the largest degree
+- MOVABLE (adj) — That can move if necessary
+- MOVE (v) — To change or cause to change position or location
+- MOVEMENT (n) — A change of position or location
+- MUCH (adj) — Of relatively large dimension, value, quantity, or volume
+- MUCH (adv) — To a great degree or extent
+- MULTIPLY (v) — To use multiplication to get a result For other meanings, use: INCREASE (v)
+- MUST (v) — Auxiliary modal verb that T shows obligation M P
+- NAME (n) — The identification you give to a person or an object
+- NEAR (adj) — At or to a relatively short distance
+- NEAR (prep) — Approaching in space or BALANC condition ELEVAT MAXIMU
+- NECESSARY (adj) — That must be
+- NETIC (adj) — electromagnetism Related to
+- NETICALLY (adv) — electromagnetism
+- NEUTRAL (adj) — 1. That has no effect 2. That is not acid or alkaline
+- NEW (adj) — Not used before
+- NEXT (adj) — The first occurrence that follows immediately after in time or sequence.
+- NO (adj) — Not any
+- NO (adv) — Function word that shows the negative answer to a question
+- NOISE (n) — An unwanted sound
+- NONE (pron) — Not one, not anyone
+- NOSE (n) — The front end or part, a part that protrudes
+- NOT (adv) — Adverb of negation
+- NOTCH (n) — An area in the shape of a “V”
+- NUMBER (n) — 1. A symbol or word that identifies an integer and/or decimal 2. An amount that you can count or calculate
+- OBEY (v) — To do that which the procedures or instructions tell you
+- OBJECT (n) — Something that you can see or touch
+- OCCUR (v) — To be found or to take place, to come to be
+- OF (prep) — flow
+- OF (prep) — Function word that shows: from, belonging to, having, or containing
+- OFF (adj) — Not in operation
+- OFF (adv) — 1. Not in operation 2. Not in contact
+- OFF (prep) — Not in contact with
+- ON (adj) — In operation
+- ON (adv) — 1. In operation 2. In contact
+- ON (prep) — Function word that shows contact, support, direction
+- ONE (pron) — That refers to a single person or object You can also use this word as a technical noun.
+- ONLY (adj) — Nothing more or different TH AP CO
+- ONLY (adv) — Exclusively
+- ONTO (prep) — To a position on or upon WHE THE ONT BRA
+- OPEN (adj) — That lets something go in or out
+- OPEN (v) — 1. To move or cause to OPEN move from the VALV closed position 2. To operate a circuit breaker to interrupt an electrical circuit
+- OPENING (n) — An aperture or hole in a surface
+- OPERATE (v) — To put, keep, or be in action
+- OPERATION (n) — That which occurs when THIS P something operates or is IMPO operated CORR OF T
+- OPPOSITE (adj) — 1. In the other direction 2. Across from
+- OPPOSITE (prep) — Across from
+- OPTIONAL (adj) — Not mandatory
+- OR (conj) — Function word that shows a choice Do not use this word with the meaning of otherwise. Use a different construction.
+- OTHER (adj) — Not the same as that given before
+- OTHER (pron) — That which is not the same as that given before
+- OUT (adj) — Away from, or not in, a location or position
+- OUT (adv) — To a position away from the inside
+- OUT OF (prep) — 1. Through or from the T inside to the outside 2. Not in
+- OUTBOARD (adj) — Farther from the longitudinal axis of something
+- OUTBOARD (adv) — In, or to, a position farther from the longitudinal axis of something
+- OUTBOARD OF (prep) — At a position farther from P the longitudinal axis P P O F
+- OUTDOORS (adv) — Not in a building
+- OUTER (adj) — Located on the outside A or farther from the center T of an object
+- OUTPUT (n) — The data, power, energy THE that comes out of MATC equipment or a system TRAN SUPP TO T LOUD
+- OVERBOARD (adv) — Out of a vessel
+- OVERLAP (n) — The area in which a part of one surface is on a part of a second surface
+- OVERRIDE (v) — To prevent the automatic MA operation of a part or TH system SE
+- PAINT (v) — To apply paint to something
+- PAIR (n) — Two objects that are the same or almost the same, and/or that you use together
+- PARALLEL (adj) — Along lines that stay a constant distance apart at all points
+- PARK (v) — To stop a vehicle and to let it stay in one position on the ground
+- PART (n) — 1. A constituent of an object, machine, component, assembly, or equipment 2. A piece or section of REF a whole FOR PRO
+- PARTICLE (n) — A very small piece of material
+- PASTE (n) — A wet, flexible mixture compound
+- PATCH (n) — A piece of material that you use to repair a surface or hole
+- PERFORMANCE (n) — The ability of a part, a mechanism, or system to do its necessary function when you compare it with a standard or specification For other meanings, use: DO (v)
+- PERIOD (n) — A quantity of time
+- PERMANENT (adj) — Without a limit in time
+- PERMANENTLY (adv) — In a permanent manner
+- PERMITTED (adj) — Allowed
+- PERPENDICULAR (adj) — At a 90 degree angle to a given line or plane
+- PERSON (n) — A human being
+- PERSONNEL (n) — Persons employed in a group or organization
+- PIECE (n) — A quantity or segment of a whole that you can use on its own, or that can operate as an individual item
+- PLAY (n) — Free movement, the length or dimension of this movement
+- PLUS (prep) — With the addition of
+- PNEUMATIC (adj) — Related to, or operated by gas pressure
+- PNEUMATICALLY (adv) — With pneumatic power
+- POINT (n) — 1. A sharp or tapered end 2. An accurate location ON MEA DIS POI
+- POINT (v) — 1. To show the position or direction of 2. To turn something in DO a specified direction CO NO SK
+- POISONOUS (adj) — That contains poison
+- POLISH (v) — To make smooth or shiny
+- POSITION (n) — The attitude or setting o something that you can TH adjust, or the place or site where you put something
+- POSSIBLE (adj) — That can occur
+- POSSIBLY (adv) — That can occur
+- PRECAUTION (n) — That which you do to prevent injury and/or damage
+- PRECISION (n) — The quality of being accurate
+- PREPARE (v) — To make or become ready
+- PRESSURIZATION (n) — The procedure that supplies or increases the pressure
+- PRESSURIZE (v) — To supply pressure
+- PREVENT (v) — To make sure that something does not occur LET (v)
+- PREVIOUS (adj) — That goes before in an unspecified time or sequence Be accurate. Use LAST (adj) for the event that occurs immediately before in time or sequence.
+- PREVIOUSLY (adv) — fore, earlier, in the st
+- PRIMARY (adj) — First in importance
+- PROBLEM (n) — Something that is diffic and for which you must P find the correct answer
+- PROCEDURE (n) — Steps that are in a sequence
+- PROPERTY (n) — A characteristic or attribute of an object
+- PROPORTION (n) — The ratio of something to AL something else CL WI TH For other PR meanings, use: RELATION (n)
+- PROTECTION (n) — Something to prevent injury, damage, or failure
+- PROTECTIVE (adj) — That gives protection
+- PROTRUDE (v) — To be farther forward or out from an adjacent surface
+- PULL (v) — To use a force on something to move it toward the source of the force Use this word together with a preposition or an adverb to show direction.
+- PUSH (v) — 1. To apply a force to something to move it away from the source of the force 2. To move with a force TH against something PU BR Use this word together with a preposition or an adverb to show direction.
+- PUT (v) — To cause something to move or to be in a specified position or condition
+- PUT ON (v) — To cover your skin or face with clothing, or other items that give protection
+- QUALITY (n) — Condition, property, or type
+- QUANTITY (n) — A specified amount or number For an amount that you can count, use NUMBER (n).
+- QUICKLY (adv) — In a fast manner
+- RADIAL (adj) — Along a radius
+- RADIALLY (adv) — Along a radius
+- RADIOACTIVE (adj) — Related to radioactivity
+- RANDOM (adj) — Not regular
+- RANDOMLY (adv) — Not regularly
+- RANGE (n) — The limits within which something operates
+- RATE (n) — A measurement of how MAKE S frequently or how quickly F something occurs C In general, use the word AGAIN (adv) or BACK (adv) with the basic word to replace words that have “re-” as a prefix.
+- READ (v) — To come to know READ information with the eyes INDI or electronically CONT
+- REAR (adj) — Away from the person who looks or from a reference point
+- REAR (n) — The rear part or rear surface
+- REARWARD (adv) — In the direction of the rear
+- RECEIVE (v) — To get energy, material, or a signal from a different source
+- RECESS (n) — An indentation in a surface
+- RECOMMEND (v) — To advise that which is best
+- RECORD (v) — 1. To make notes of and keep data to use subsequently 2. To put data on a storage medium
+- RECYCLE (v) — To put a used material through a process to make it possible to use it or its components again For other meanings, use: CYCLE (n)
+- REFER (v) — 1. To tell a person where to find information 2. To give information
+- REFLECTION (n) — Something that occurs when energy comes against a surface which sends it back
+- REFUEL (v) — To supply with fuel
+- REGULAR (adj) — At specified or equal intervals
+- REGULARLY (adv) — n a regular manner
+- REJECT (v) — To make a decision that something is unsatisfactory
+- RELATED (adj) — That has a relation
+- RELATION (n) — The connection between two or more things caused by their functions, values, or conditions
+- RELEASE (v) — To make free, to let go
+- REMAINING (adj) — That continues to stay
+- REMOVAL (n) — A procedure which removes an object
+- REMOVE (v) — To take or move RE something away from its IN initial position PA
+- REPAIR (n) — The act of repairing or the result when something is repaired
+- REPAIR (v) — To make an item serviceable
+- REPLACE (v) — To remove an item and to install a new or serviceable item of the same type
+- REPLACEMENT (n) — The item you install when you replace an item
+- REPORT (n) — The information that is I recorded about a subject R or occurrence D I
+- RESISTANT (adj) — That will help to prevent something
+- RESULT (n) — Something that occurs when you do something
+- RETRACT (v) — 1. To pull in(to) 2. To move in(to)
+- RETRACTION (n) — The result when something retracts
+- RIGHT (adj) — On the east side when you look north
+- RIGID (adj) — That cannot easily bend or change shape
+- RISK (n) — The possibility that something that is dangerous occurs
+- ROUGH (adj) — Not smooth
+- ROUNDED (adj) — Not angular
+- ROUTING (n) — The specified direction that cables, pipes, wires and other parts of a system must go along
+- ROW (n) — A number of objects in a line
+- RUB (v) — To move or cause something to move with pressure and friction along a surface
+- SAFE (adj) — Not dangerous, disarmed
+- SAFELY (adv) — In a safe manner
+- SAFETY (n) — A condition that is safe
+- SAFETY (v) — 1. To prevent O accidental operation C T 2. To make sure that something does not become loose
+- SAME (adj) — Agrees in all details
+- SAME (pron) — Agrees in all details
+- SAMPLE (n) — A piece or quantity of something that you use for an inspection or test procedure to show that it has specified qualities
+- SATISFACTORILY (adv) — In a satisfactory manner
+- SATISFACTORY (adj) — Agrees with all that is necessary
+- SCHEDULE (v) — To plan something in a time or a sequence
+- SEAL (n) — Something that prevents A access or leaks T
+- SEAL (v) — To prevent access or leaks
+- SECONDARY (adj) — Second in importance
+- SEE (v) — To know with the eyes For other meanings, use: REFER (v) EXAMINE (v) MAKE SURE (v)
+- SELECT (v) — To make a choice Do not use this word as a synonym for SET (v).
+- SELECTION (n) — The action or result of choosing
+- SEMICIRCULAR (adj) — That has the shape of half a circle
+- SEND (v) — To cause to go
+- SENSE (v) — To get an input automatically
+- SENSITIVE (adj) — That can sense small changes
+- SEPARATION (n) — The action or result of separating
+- SEQUENCE (n) — The relation of items that follow one after the other in a list or the relation of steps or events that occur one after the other in time
+- SERRATION (n) — One or more notches or teeth as in a saw
+- SERVICEABLE (adj) — Correct or satisfactory
+- SERVICING (n) — The steps necessary to prepare something for operation
+- SET (n) — A group of related items U that you (can) use for the same purpose
+- SET (v) — To put something into a given adjustment, condition, or mode
+- SHAKE (v) — To move or cause to move quickly up and down or from side to side
+- SHAPE (n) — The contour of an object THE THE THE
+- SHARP (adj) — That can cut or make a hole
+- SHEET (n) — A piece of material that is thin in relation to its length and width
+- SHINY (adj) — That can cause a reflection of light
+- SHOCK (n) — The sudden effect of energy on a person or object
+- SHORT (adj) — That has small length or duration If it is possible, be A accurate. P T D S T M 3
+- SHOW (v) — 1. To cause to be seen THE I SHOWS BATTE 2. To be in view or come into view
+- SIDE (n) — 1. The specified surface or area of an object 2. A location or direction that has a relationship to a center or a line of division
+- SIGN (n) — The indication of a possible condition
+- SIMULATE (v) — To make a condition that SIM is the same as one that SPEE can occur in operation
+- SINCE (conj) — Function word that shows: “from some time in the past until a later time or now” For other meanings, use: BECAUSE (conj)
+- SLOPE (n) — A surface that is not level
+- SLOT (n) — A long opening that is not wide
+- SLOW (adj) — At low speed
+- SLOWLY (adv) — In a slow manner
+- SMALL (adj) — Less than average in dimension, quantity, quality, or capacity
+- SMELL (v) — To sense with the nose
+- SMOKE (n) — A gas that has particles of burned material and that you can see
+- SMOKE (v) — To breathe the fumes of burning material and especially tobacco
+- SMOOTH (adj) — 1. That has a continuous uniform surface 2. That has a constant rate of movement
+- SMOOTHLY (adv) — In a smooth manner
+- SOAK (v) — 1. To put something into a liquid and keep it there until it is fully wet or soft 2. To stay in liquid until T fully wet or soft. M S M 2
+- SOFT (adj) — Flexible, not hard
+- SOLID (adj) — That has the properties of a solid
+- SOLID (n) — Material that is not a gas APP or a liquid TO MON MEL
+- SOLUTION (n) — 1. A liquid that PR includes a dissolved SO material CO CE 2. The answer to a problem
+- SOME (adj) — Related to a quantity not SO specified NO FU
+- SOME (pron) — Related to a quantity not SO specified TH SO
+- SOMETHING (pron) — A thing that is not determined or specified
+- SOUND (n) — Something that you can hear
+- SOURCE (n) — 1. Something that supplies energy or data 2. The point where something starts
+- SPACE (n) — A distance, area, or volume
+- SPARK (n) — A hot, bright particle of a material that burns
+- SPEAK (v) — To use a voice to make words
+- SPECIAL (adj) — For a specified function
+- SPECIALLY (adv) — In a special manner
+- SPECIFIED (adj) — Given in, identified in, or related to a specification, regulation, or procedure TH
+- SPEED (n) — The rate of movement
+- SPHERICAL (adj) — That has the shape of a sphere
+- SPILL (v) — To accidentally flow, or cause to flow, out of a container
+- SPRAY (n) — A jet of very small drops of liquid
+- SPRAY (v) — To apply as a spray
+- STABLE (adj) — That does not change or move
+- STANDARD (adj) — Related to equipment and procedures that are normally used
+- START (n) — The beginning of a movement or operation
+- START (v) — 1. To begin a procedure, movement, or operation 2. To come into being, activity, or operation
+- STAY (v) — To continue to be in a location or condition
+- STEP (n) — A specified part of a procedure
+- STOP (v) — 1. To cause the end of a procedure, movement, or an operation 2. To come to an end
+- STOW (v) — To move or cause to move into a specified position of storage.
+- STRAIGHT (adj) — Without curves or bends MAKE STRA THE SMOO
+- STRIP (n) — A piece of material that is long and thin, but not wide
+- STRIPE (n) — A line on a surface which TH is a different color AN
+- STRONG (adj) — With much strength, power, or concentration
+- STRUCTURAL (adj) — Related to the structure
+- STRUCTURALLY (adv) — Related to the structure
+- STRUCTURE (n) — 1. A construction 2. The arrangement of something
+- SUBASSEMBLY (n) — An assembly that is a D part of a larger assembly P S
+- SUBSEQUENT (adj) — Following in an unspecified time or sequence Use NEXT (adj) DO for the first IN occurrence that follows immediately in time or sequence.
+- SUBSEQUENTLY (adv) — After an unspecified tim Use THEN (adv) LIF for an occurrence that follows immediately in time or sequence.
+- SUBTRACT (v) — To take from a number or quantity
+- SUCH (adj) — Of the same group FOR EXAMPLE
+- SUDDEN (adj) — That occurs in a short time
+- SUDDENLY (adv) — In a sudden manner
+- SUFFICIENT (adj) — Not less (or more) than necessary
+- SUFFICIENTLY (adv) — Not less (or more) than necessary
+- SUM (n) — The result when you add CALC OF T EACH
+- SUPPLY (n) — Something that is supplied
+- SUPPLY (v) — 1. To give something that is necessary 2. To make something available for use
+- SURE (adj) — Certain
+- SURFACE (n) — One or more of the faces CLE of something WIT CLO
+- SWALLOW (v) — To take through the mouth and esophagus into the stomach Use this word for safety instructions only.
+- SYMBOL (n) — A written sign that identifies a quantity, operation, item, or condition
+- SYMMETRICAL (adj) — That has or is with symmetry
+- SYMMETRICALLY (adv) — In a symmetrical manner THE MUS SYM
+- SYMPTOM (n) — A sign of a condition
+- SYNCHRONIZED (adj) — 1. That operates at the same time 2. That agrees with
+- SYSTEM (n) — An assembly of related parts to do a specified operation
+- TACKY (adj) — Sticky when you touch it
+- TAG (v) — To put a tag on
+- TAP (v) — To hit lightly and quickly
+- TASK (n) — Assigned work or procedure
+- TELESCOPIC (adj) — Related to items that retract into each other
+- TELL (v) — To give an order or supply information
+- TEMPORARILY (adv) — In a temporary manner
+- TEMPORARY (adj) — For a short time only, not permanent
+- TERTIARY (adj) — Third in importance
+- TEST (n) — The procedure where an object or system is operated to make sure that its performance and/or function is correct
+- THAN (conj) — Function word that you use with comparative adjectives or adverbs
+- THAT (conj) — Function word that starts MAK a subordinate clause SUR Refer to section 9, GR-1.
+- THAT (pron) — Function word that shows the person or thing referred to
+- THE (art) — Function word: definite article
+- THEIR (adj) — Belonging to persons or things
+- THEM (pron) — Function word that shows the persons or things referred to
+- THEN (adv) — Immediately after in time LIF or sequence THE HAN
+- THERE (adv) — In that position
+- THERE (pron) — Function word that starts T a sentence or a M subordinate clause P D
+- THESE (adj) — Refers to specified persons or things
+- THESE (pron) — Function word that shows the persons or things referred to
+- THEY (pron) — Function word that shows the persons or things referred to
+- THICK (adj) — That has a specified or large thickness
+- THICKNESS (n) — The smallest of the three T dimensions T M 0
+- THIN (adj) — That has a small thickness
+- THINK (v) — To have an opinion
+- THIS (adj) — Refers to a specified person or thing
+- THIS (pron) — Function word that shows the person or thing referred to Refer to section 9, GR-4.
+- THOSE (pron) — Function word that shows the persons or things referred to
+- THROUGH (adv) — Function word that shows movement into one end or side and out of the other
+- THROUGH (prep) — Function word that shows movement into one end or side and out of the other
+- THRU (prep) — From a point in a sequence to another
+- THUS (adv) — For that reason For other meanings, use: FOLLOW (v)
+- TIGHT (adj) — Not free For other meanings, use: SEAL (v) TENSION (TN)
+- TIGHTEN (v) — To cause to be tight
+- TIGHTLY (adv) — In a tight manner
+- TILT (v) — To move at an angle or to put something at an angle between the vertical and the horizontal
+- TIME (n) — 1. A duration that you can measure 2. An occurrence
+- TO (prep) — Function word that shows: - The direction of, point of arrival or time, connection, result, cause - That the word that follows is an infinitive
+- TOGETHER (adv) — In one group or position For other meanings, use: AT THE SAME TIME
+- TOLERANCE (n) — A permitted difference from a standard
+- TOO (adv) — More than is necessary or correct
+- TOOL (n) — An object used to make or do something
+- TOP (adj) — That is uppermost
+- TOP (n) — The uppermost position
+- TORILY (adv) — manner Not satisfactory
+- TORQUE (v) — To tighten to a specified torque
+- TORY (adj)
+- TOTAL (adj) — All of
+- TOTAL (n) — The full quantity
+- TOUCH (v) — To be in contact
+- TOW (v) — To pull something along
+- TRANSMIT (v) — To send energy or a signal
+- TRANSPARENT (adj) — Easy to see through
+- TRAVEL (n) — The movement of an item
+- TRY (v) — To make an effort to do something
+- TUNE (v) — To adjust equipment to the best performance
+- TURN (n) — One full cycle of movement around an axis
+- TURN (v) — To move or cause to move around an axis or a point
+- TWIST (v) — 1. To use a force that DO NO turns something and CABLE causes a distortion 2. To turn or change shape as a result of torsion
+- TYPE (n) — A specified group
+- TYPICAL (adj) — That has the important qualities of a group
+- UNDEMANDED (adj) — That occurs without an apparent cause
+- UNFOLD (v) — To open or to straighten UNF or to cause to open or to SH straighten from a folded CAR position or condition
+- UNIT (n) — 1. Equipment that does a function 2. A quantity that is a standard of measurement
+- UNKNOWN (adj) — Not known
+- UNLESS (conj) — Except if
+- UNLOCK (v) — To release or become released from a locked condition
+- UNSERVICEABLE (adj) — Not fit for its purpose
+- UNTIL (conj) — Up to the time that
+- UNTIL (prep) — Up to the time of
+- UNUSUAL (adj) — Not usual
+- UNUSUALLY (adv) — n an unusual manner
+- UNWANTED (adj) — That must not be there
+- UNWIND (v) — To remove or become UNWIN removed from around an object
+- UP (adj) — In a position above
+- UP (adv) — To a position above
+- UP (prep) — To a position above
+- UPSTREAM (adj) — In a direction opposite the flow
+- UPSTREAM (adv) — In a direction opposite the flow
+- UPSTREAM OF (prep) — In a direction opposite the flow
+- USE (v) — To make something do its specified function
+- USUAL (adj) — That you use or that occurs most frequently
+- USUALLY (adv) — In a usual manner
+- VALUE (n) — A quantity that is calculated or given
+- VERTICAL (adj) — At 90 degrees to the horizon
+- VERTICALLY (adv) — At 90 degrees to the horizon
+- VERY (adv) — To a high degree
+- VIBRATION (n) — Regular movement from a center position
+- VIEW (n) — The ability to see something
+- VISUAL (adj) — That you can see
+- VISUALLY (adv) — With the eyes
+- VOICE (n) — The sound you make when you speak
+- VOLUME (n) — 1. The space that an object fills 2. How loud a sound is TO VOL BUT SID
+- WAIT (v) — To stop doing something (1 while another thing TH occurs. CO
+- WALK (v) — To move on foot from one location to a different location
+- WANT (v) — To intend, to desire
+- WARM (adj) — Moderately hot
+- WE (pron) — The manufacturer, company, or organization that releases the documentation Do not use this pronoun for other meanings.
+- WEAK (adj) — With small strength, power, or concentration
+- WEAR (v) — To become damaged by THE C friction WE TH For other meanings, use: USE (v) PUT ON (v)
+- WEATHER (n) — Conditions of the atmosphere: temperature, moisture, winds, and clouds
+- WEIGH (v) — 1. To measure the weight of something 2. To have a specified weight
+- WEIGHT (n) — The force caused when THE BASI gravity acts on the mass OF TH of an object NOT I PROTE COVER
+- WET (adj) — That has liquid on it, in it, or absorbed into it
+- WHEN (conj) — At the time that or during WHE MOV MEA TRA
+- WHERE (conj) — At, to, or in which location
+- WHICH (pron) — The thing or things that
+- WHILE (conj) — At the same time
+- WHO (pron) — The person or personnel THE that OPE WIN THE
+- WIDE (adj) — That has a specified or large width
+- WIDTH (n) — The smaller of two ME dimensions, the second- OF largest of three TH dimensions
+- WILL (v) — Auxiliary modal verb that shows simple future rb tense
+- WIND (v) — To move around and around an object
+- WISE (adv) — to clockwise
+- WITH (prep) — Function word that shows association or relationship, help or sharing, a means or instrument Refer to section 9, GR-2.
+- WITHOUT (prep) — Not with
+- WORK (n) — That which you do when DO you use physical CL strength, or mental power
+- WRITE (v) — To record data or information as words, letters, or symbols
+- YES (adv) — Function word that shows the positive answer to a question
+- YOU (pron) — The reader or the user
+- YOUR (adj) — Related to the reader or the user
