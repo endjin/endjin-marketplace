@@ -9,12 +9,20 @@ endjin-marketplace/
 ├── .claude-plugin/
 │   └── marketplace.json          # Marketplace catalog (required)
 └── plugins/
-    └── code-review-tools/        # One directory per plugin
+    ├── code-review-tools/        # One directory per plugin
+    │   ├── .claude-plugin/
+    │   │   └── plugin.json       # Plugin manifest
+    │   └── skills/
+    │       └── explain-diff-html/
+    │           └── SKILL.md      # One directory per skill
+    └── writing-tools/
         ├── .claude-plugin/
-        │   └── plugin.json       # Plugin manifest
+        │   └── plugin.json
         └── skills/
-            └── explain-diff-html/
-                └── SKILL.md      # One directory per skill
+            └── clear-technical-writing/  # Skills can ship references/ and scripts/ alongside SKILL.md
+                ├── SKILL.md
+                ├── references/
+                └── scripts/
 ```
 
 Each plugin entry in `marketplace.json` references its directory with an explicit relative path (e.g. `"source": "./plugins/code-review-tools"`).
@@ -48,7 +56,7 @@ To get the latest plugin changes later (versions track git commits, so every pus
 /plugin marketplace update
 ```
 
-Skills are namespaced by plugin: for example, `explain-diff-html` (which builds a rich, self-contained HTML explanation of a code change, branch, or PR — with background, intuition, a code walkthrough, and an interactive quiz) is invoked as `/code-review-tools:explain-diff-html`, or Claude invokes it automatically based on its `description` when you ask for a rich explanation of a diff.
+Skills are namespaced by plugin: for example, `explain-diff-html` (which builds a rich, self-contained HTML explanation of a code change, branch, or PR — with background, intuition, a code walkthrough, and an interactive quiz) is invoked as `/code-review-tools:explain-diff-html`, or Claude invokes it automatically based on its `description` when you ask for a rich explanation of a diff. Similarly, `clear-technical-writing` (which writes and rewrites technical text — docs, ADRs, runbooks, changelogs, error messages — so it is plain, consistent, and inclusive) is invoked as `/writing-tools:clear-technical-writing`, or automatically when you ask for clear, plain, or simplified technical writing.
 
 Non-interactive (CI, scripts):
 
