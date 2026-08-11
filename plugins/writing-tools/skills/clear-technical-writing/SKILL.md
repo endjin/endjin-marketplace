@@ -47,10 +47,11 @@ Work in a loop: classify the text, draft against the rules, run the checker, fix
    `references/inclusive-language.md` (bias-free language: gender, disability, culture,
    and the modern replacements for exclusionary technical jargon).
 
-4. **Check.** Run the bundled checker:
+4. **Check.** Run the bundled checker. The script lives in this skill's folder, so
+   give the path from wherever you run it:
 
    ```
-   python3 scripts/check_writing.py DRAFT.md --type mixed   # or instructions / description
+   python3 <path-to-this-skill>/scripts/check_writing.py DRAFT.md --type mixed   # or instructions / description
    ```
 
    It flags long sentences, passive voice, complex tenses, inflated words and phrases,

@@ -41,7 +41,7 @@ IMPERATIVE_STARTS = {"run", "set", "use", "open", "close", "add", "remove", "ins
 
 
 def load_data():
-    with open(os.path.join(HERE, "word_data.json")) as f:
+    with open(os.path.join(HERE, "word_data.json"), encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -55,7 +55,7 @@ def strip_markup(text):
 
 
 def split_sentences(block):
-    parts = re.split(r"(?<=[.!?:])\s+|\n\s*[-*•]\s+|\n\s*\d+[.)]\s+", block)
+    parts = re.split(r"(?<=[.!?])\s+|\n\s*[-*•]\s+|\n\s*\d+[.)]\s+", block)
     return [p.strip() for p in parts if p and re.search(r"[A-Za-z]", p)]
 
 
@@ -163,13 +163,13 @@ def report(f, name):
         out.append(f"\n-- Non-inclusive terms ({len(f['inclusive'])}) [inclusive-language.md] --")
         for t, r in sorted(f["inclusive"].items()):
             out.append(f"  {t} -> {r}")
-    if f["gendered"]:
-        seen = sorted({g for _, g in f["gendered"]})
-        out.append(f"\n-- Gendered pronouns — check each is a real, known person --")
-        out.append("  " + ", ".join(seen))
+    gendered = sorted({g for _, g in f["gendered"]})
+    if gendered:
+        out.append(f"\n-- Gendered pronouns ({len(gendered)}) — check each is a real, known person --")
+        out.append("  " + ", ".join(gendered))
     total = (len(f["long_sentences"]) + len(f["long_paragraphs"]) + len(f["mechanics"])
              + len(f["substitutions"]) + len(f["buzzwords"]) + len(f["vague"])
-             + len(f["fillers"]) + len(f["inclusive"]))
+             + len(f["fillers"]) + len(f["inclusive"]) + len(gendered))
     out.append(f"\nSummary: {total} findings. All findings are advisory — judge each in context.")
     return "\n".join(out)
 
@@ -182,7 +182,11 @@ def main():
     args = ap.parse_args()
     data = load_data()
     for path in args.files:
-        text = sys.stdin.read() if path == "-" else open(path).read()
+        if path == "-":
+            text = sys.stdin.read()
+        else:
+            with open(path, encoding="utf-8") as fh:
+                text = fh.read()
         print(report(check_text(text, args.type, data),
                      "stdin" if path == "-" else path))
         print()
