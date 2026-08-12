@@ -1,0 +1,22 @@
+{
+  "name": "ticket-workflow",
+  "displayName": "Ticket Workflow",
+  "description": "Plan a ticket into a plan that survives adversarial review, then implement it through to a reviewed pull request. Tracker-agnostic — Azure DevOps, GitHub Issues, Jira or Linear — driven by one per-repository configuration file.",
+  "author": {
+    "name": "endjin",
+    "url": "https://endjin.com"
+  },
+  "license": "MIT",
+  "keywords": [
+    "planning",
+    "implementation",
+    "azure-devops",
+    "github-issues",
+    "jira",
+    "linear",
+    "pull-request",
+    "adversarial-review",
+    "work-items"
+  ],
+  "repository": "https://github.com/endjin/endjin-marketplace"
+}

@@ -2,6 +2,13 @@
 
 A marketplace of endjin's plugins and skills for AI coding agents. It uses the [Claude Code plugin marketplace format](https://code.claude.com/docs/en/plugin-marketplaces), which [GitHub Copilot CLI also reads natively](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/plugins-marketplace) — so one repo serves both tools. The skills themselves use the cross-tool [Agent Skills standard](https://github.blog/changelog/2025-12-18-github-copilot-now-supports-agent-skills/) (SKILL.md), which is also understood by VS Code, Cursor, and Codex CLI.
 
+## Plugins
+
+| Plugin | What it gives you |
+| --- | --- |
+| [`code-review-tools`](plugins/code-review-tools) | `explain-diff-html` — a rich, self-contained HTML explanation of a code change, branch or PR, with background, intuition, a code walkthrough and an interactive quiz. |
+| [`ticket-workflow`](plugins/ticket-workflow) | `plan-ticket` and `implement-ticket` — take a ticket from a backlog sentence to a reviewed pull request. Tracker-agnostic (Azure DevOps, GitHub Issues, Jira, Linear), driven by one configuration file per repository that `ticket-workflow-init` writes for you. |
+
 ## Structure
 
 ```
