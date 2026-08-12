@@ -19,6 +19,18 @@
       "keywords": ["code-review", "diff", "pull-request"],
       "category": "code-review",
       "repository": "https://github.com/endjin/endjin-marketplace"
+    },
+    {
+      "name": "ticket-workflow",
+      "source": "./plugins/ticket-workflow",
+      "description": "Plan a ticket into a plan that survives adversarial review, then implement it through to a reviewed pull request — tracker-agnostic, driven by one per-repository configuration file",
+      "author": {
+        "name": "endjin"
+      },
+      "license": "MIT",
+      "keywords": ["planning", "implementation", "azure-devops", "github-issues", "pull-request", "work-items"],
+      "category": "workflow",
+      "repository": "https://github.com/endjin/endjin-marketplace"
     }
   ],
   "renames": {
