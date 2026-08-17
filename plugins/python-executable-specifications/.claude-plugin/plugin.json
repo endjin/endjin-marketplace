@@ -1,0 +1,12 @@
+{
+  "name": "python-executable-specifications",
+  "displayName": "Python Executable Specifications",
+  "description": "Guidelines and reference material for writing executable specifications in Python — Gherkin feature files with behave step definitions: project structure, declarative scenarios, hooks and fixtures, tags, configuration, data-pipeline testing patterns, reporting, and BDD anti-patterns",
+  "author": {
+    "name": "endjin",
+    "url": "https://endjin.com"
+  },
+  "license": "MIT",
+  "keywords": ["bdd", "behave", "gherkin", "testing", "python", "executable-specifications", "cucumber"],
+  "repository": "https://github.com/endjin/endjin-marketplace"
+}

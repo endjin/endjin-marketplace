@@ -19,6 +19,18 @@
       "keywords": ["code-review", "diff", "pull-request"],
       "category": "code-review",
       "repository": "https://github.com/endjin/endjin-marketplace"
+    },
+    {
+      "name": "python-executable-specifications",
+      "source": "./plugins/python-executable-specifications",
+      "description": "Guidelines and reference material for writing executable specifications in Python — Gherkin feature files with behave step definitions: declarative scenarios, hooks and fixtures, tags, configuration, data-pipeline testing patterns, and BDD anti-patterns",
+      "author": {
+        "name": "endjin"
+      },
+      "license": "MIT",
+      "keywords": ["bdd", "behave", "gherkin", "testing", "python"],
+      "category": "testing",
+      "repository": "https://github.com/endjin/endjin-marketplace"
     }
   ],
   "renames": {
