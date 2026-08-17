@@ -4,7 +4,7 @@ Endjin's Polars data-processing guidelines, packaged as an agent skill, plus the
 
 ## What you get
 
-**Skill: `python-polars`** — fires when you write, review, debug, or optimise Python code that uses Polars, and when you convert pandas or PySpark code to it. `SKILL.md` carries the rules that matter on every query (lazy by default, expressions over UDFs, filter early, batch `with_columns`, collect once) and routes to fifteen reference files that are read only when the task needs them:
+**Skill: `python-polars`** — fires when you write, review, debug, or optimise Python code that uses Polars, and when you convert pandas or PySpark code to it. `SKILL.md` carries the rules that matter on every query (lazy by default, expressions over UDFs, filter early, batch `with_columns`, collect once) and routes to seventeen reference files that are read only when the task needs them:
 
 | Reference | Covers |
 |---|---|
@@ -17,6 +17,7 @@ Endjin's Polars data-processing guidelines, packaged as an agent skill, plus the
 | `large-datasets.md` | Streaming engine, `sink_*`, partitioning, small-file problems |
 | `pipeline-patterns.md` | Codebase layout, helpers, configuration, validation boundaries |
 | `testing.md` | `assert_frame_equal`, fixtures, property-based tests, Pandera |
+| `bdd-testing.md` | Gherkin/behave executable specifications over Polars pipelines |
 | `integration.md` | Arrow, DuckDB, pandas interop, Rust expression plugins |
 | `microsoft-fabric.md` | Fabric notebooks, OneLake, ABFSS paths |
 | `anti-patterns.md` | Fifteen ways Polars code goes wrong, with fixes |

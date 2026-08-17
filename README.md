@@ -32,7 +32,7 @@ Each plugin entry in `marketplace.json` references its directory with an explici
 | Plugin | What it does |
 |---|---|
 | `code-review-tools` | Makes code reviews of branches and PRs easier. Includes `explain-diff-html`, which builds a rich, self-contained HTML explanation of a code change — background, intuition, a code walkthrough, and an interactive quiz. |
-| `python-polars` | endjin's Polars data-processing guidelines as an agent skill, with fifteen reference files read on demand, plus the official Polars documentation MCP server (`ask_polars`). |
+| `python-polars` | endjin's Polars data-processing guidelines as an agent skill, with seventeen reference files read on demand, plus the official Polars documentation MCP server (`ask_polars`). |
 
 ## Using the marketplace with Claude Code
 

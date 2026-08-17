@@ -93,6 +93,7 @@ Read the relevant file **before** writing non-trivial code in that area. Do not 
 | `references/large-datasets.md` | Data exceeds memory; streaming engine, `sink_*`, partitioning, many-small-files problems |
 | `references/pipeline-patterns.md` | Organising a codebase — module layout, helper functions, configuration, validation boundaries |
 | `references/testing.md` | `assert_frame_equal`, fixtures, property-based testing, Pandera schema validation |
+| `references/bdd-testing.md` | Gherkin/behave executable specifications — typed tables to DataFrames, unordered comparison, pipeline scenarios |
 | `references/integration.md` | Arrow, DuckDB, pandas interop, and Rust expression plugins |
 | `references/microsoft-fabric.md` | Running Polars in Fabric notebooks — OneLake, ABFSS paths, Fabric-specific gotchas |
 | `references/anti-patterns.md` | Reviewing existing code, or migrating from a pandas mindset |
