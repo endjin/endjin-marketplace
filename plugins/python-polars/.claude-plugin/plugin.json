@@ -1,0 +1,13 @@
+{
+  "name": "python-polars",
+  "displayName": "Python Polars",
+  "description": "Guidelines and reference material for writing fast, idiomatic Python Polars data-processing code — lazy pipelines, expressions, cloud I/O, streaming, testing, Microsoft Fabric — plus the official Polars documentation MCP server",
+  "author": {
+    "name": "endjin",
+    "url": "https://endjin.com"
+  },
+  "license": "MIT",
+  "keywords": ["polars", "python", "dataframe", "data-engineering", "parquet", "pandas", "arrow"],
+  "homepage": "https://endjin.com/blog/polars-faster-pipelines-simpler-infrastructure-happier-engineers",
+  "repository": "https://github.com/endjin/endjin-marketplace"
+}

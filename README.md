@@ -9,15 +9,30 @@ endjin-marketplace/
 ├── .claude-plugin/
 │   └── marketplace.json          # Marketplace catalog (required)
 └── plugins/
-    └── code-review-tools/        # One directory per plugin
+    ├── code-review-tools/        # One directory per plugin
+    │   ├── .claude-plugin/
+    │   │   └── plugin.json       # Plugin manifest
+    │   └── skills/
+    │       └── explain-diff-html/
+    │           └── SKILL.md      # One directory per skill
+    └── python-polars/
         ├── .claude-plugin/
-        │   └── plugin.json       # Plugin manifest
+        │   └── plugin.json
+        ├── .mcp.json             # MCP servers the plugin brings with it
         └── skills/
-            └── explain-diff-html/
-                └── SKILL.md      # One directory per skill
+            └── python-polars/
+                ├── SKILL.md
+                └── references/   # Read on demand, not loaded up front
 ```
 
 Each plugin entry in `marketplace.json` references its directory with an explicit relative path (e.g. `"source": "./plugins/code-review-tools"`).
+
+## Plugins
+
+| Plugin | What it does |
+|---|---|
+| `code-review-tools` | Makes code reviews of branches and PRs easier. Includes `explain-diff-html`, which builds a rich, self-contained HTML explanation of a code change — background, intuition, a code walkthrough, and an interactive quiz. |
+| `python-polars` | endjin's Polars data-processing guidelines as an agent skill, with fifteen reference files read on demand, plus the official Polars documentation MCP server (`ask_polars`). |
 
 ## Using the marketplace with Claude Code
 
@@ -32,6 +47,7 @@ Add the marketplace (once), then install plugins from it:
 
 # Install a plugin
 /plugin install code-review-tools@endjin
+/plugin install python-polars@endjin
 
 # Activate in the current session (new sessions pick plugins up automatically)
 /reload-plugins

@@ -19,6 +19,18 @@
       "keywords": ["code-review", "diff", "pull-request"],
       "category": "code-review",
       "repository": "https://github.com/endjin/endjin-marketplace"
+    },
+    {
+      "name": "python-polars",
+      "source": "./plugins/python-polars",
+      "description": "Guidelines and reference material for writing fast, idiomatic Python Polars data-processing code — lazy pipelines, expressions, cloud I/O, streaming, testing, Microsoft Fabric — plus the official Polars documentation MCP server",
+      "author": {
+        "name": "endjin"
+      },
+      "license": "MIT",
+      "keywords": ["polars", "python", "dataframe", "data-engineering", "parquet"],
+      "category": "data-engineering",
+      "repository": "https://github.com/endjin/endjin-marketplace"
     }
   ],
   "renames": {
