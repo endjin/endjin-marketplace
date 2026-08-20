@@ -19,6 +19,18 @@
       "keywords": ["code-review", "diff", "pull-request"],
       "category": "code-review",
       "repository": "https://github.com/endjin/endjin-marketplace"
+    },
+    {
+      "name": "writing-tools",
+      "source": "./plugins/writing-tools",
+      "description": "Tools for clear, unambiguous writing — includes clear-technical-writing for authoring and rewriting technical text that is plain, consistent, and inclusive",
+      "author": {
+        "name": "endjin"
+      },
+      "license": "MIT",
+      "keywords": ["writing", "technical-writing", "plain-language", "documentation", "inclusive-language"],
+      "category": "writing",
+      "repository": "https://github.com/endjin/endjin-marketplace"
     }
   ],
   "renames": {

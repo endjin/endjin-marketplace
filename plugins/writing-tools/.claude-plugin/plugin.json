@@ -1,0 +1,12 @@
+{
+  "name": "writing-tools",
+  "displayName": "Writing Tools",
+  "description": "Tools for clear, unambiguous writing — includes clear-technical-writing for authoring and rewriting technical text that is plain, consistent, and inclusive",
+  "author": {
+    "name": "endjin",
+    "url": "https://endjin.com"
+  },
+  "license": "MIT",
+  "keywords": ["writing", "technical-writing", "plain-language", "documentation", "inclusive-language"],
+  "repository": "https://github.com/endjin/endjin-marketplace"
+}
