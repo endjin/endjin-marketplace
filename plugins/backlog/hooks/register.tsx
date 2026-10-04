@@ -173,7 +173,11 @@ const ID = /^[a-z0-9]{4,12}$/
 const toChange = (raw: unknown): BacklogChange | undefined => {
   const fields = record(raw)
   const id = typeof fields.id === 'string' && ID.test(fields.id) ? fields.id : ''
-  const at = Number(fields.at)
+  // The first version of this mod kept an item as one whole file, `<id>.json`,
+  // rewritten on every change. Such a file reads as one record that sets every
+  // field, as of its last rewrite; changes made since are records beside it.
+  const isWhole = fields.set === undefined && typeof fields.title === 'string'
+  const at = Number(isWhole ? (fields.updatedAt ?? fields.createdAt) : fields.at)
 
   if (id === '' || !Number.isFinite(at)) {
     return undefined
@@ -183,8 +187,8 @@ const toChange = (raw: unknown): BacklogChange | undefined => {
     id,
     at,
     sessionId: oneLine(fields.sessionId, 100),
-    set: toFields(record(fields.set)),
-    note: clean(fields.note, NOTE_MAX),
+    set: toFields(isWhole ? fields : record(fields.set)),
+    note: isWhole ? '' : clean(fields.note, NOTE_MAX),
   }
 }
 

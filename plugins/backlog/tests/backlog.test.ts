@@ -379,6 +379,34 @@ test('a note is kept whole or refused, never cut', async ($, on) => {
   expect(item).toMatch('A second note.')
 })
 
+test('an item kept as one whole file is read, and changed without rewriting it', async ($, on) => {
+  const { files, overwritten } = world(on)
+  const whole = JSON.stringify({
+    id: 'ab12',
+    title: 'Timeouts are not configurable',
+    category: 'issue',
+    priority: 'medium',
+    status: 'open',
+    detail: 'The 30 s timeout is a constant in src/client.ts:12.',
+    options: [],
+    recommendation: '',
+    resolution: '',
+    project: '/work/app',
+    sessionId: 'session-0',
+    createdAt: 1_699_000_000_000,
+    updatedAt: 1_699_000_000_000,
+  })
+  files.set(`${DIR}/ab12.json`, whole)
+  await $.session.start(start)
+
+  expect(await full($, 'ab12')).toMatch('src/client.ts:12')
+
+  await call($, 'update', { id: 'ab12', status: 'done', resolution: 'Made it an option.' })
+  expect(await full($, 'ab12')).toMatch('medium priority, done')
+  expect(files.get(`${DIR}/ab12.json`)).toBe(whole)
+  expect(overwritten).toEqual([])
+})
+
 test('the detail view draws the whole of a long detail', async ($, on) => {
   const { ids } = world(on)
   await $.session.start(start)
