@@ -324,6 +324,22 @@ const load = async (
   }
 }
 
+// Keeps the session's project root in state level with the host, and says
+// whether it changed. Read each time, not once at session.start: a session that
+// is resumed gets its state after that hook ran, so a root written there is
+// gone, and `/cd` or a worktree move changes the root.
+const place = async ($: EngineInterface): Promise<boolean> => {
+  const root = toPath(await $.session.root())
+
+  if ((await read($, project)) === root) {
+    return false
+  }
+
+  await update($, project, () => root)
+
+  return true
+}
+
 const publish = async ($: EngineInterface): Promise<BacklogItem[]> => {
   const all = fold()
   await update($, items, () => all)
@@ -412,6 +428,16 @@ const level = async ($: EngineInterface): Promise<void> => {
       records.delete(name)
       hasChanged = true
     }
+  }
+
+  if (await place($)) {
+    hasChanged = true
+  }
+
+  // The host holds the items for the session. A resumed session starts with
+  // none, though the records here are level with the folder.
+  if (!hasChanged && (await read($, items)).length !== before.size) {
+    hasChanged = true
   }
 
   if (hasChanged) {
@@ -687,8 +713,7 @@ const ITEM_SCHEMA = {
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
-    const root = toPath(await $.session.root())
-    await update($, project, () => root)
+    await place($)
 
     await $.command.register({
       name: 'backlog',

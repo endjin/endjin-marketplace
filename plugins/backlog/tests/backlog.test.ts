@@ -238,6 +238,39 @@ test("another session's items arrive on the poll, under All projects", async ($,
   await ui.unmount()
 })
 
+test('a session that loses the state it wrote while it started still shows its items', async ($, on) => {
+  const { clock, elsewhere } = world(on)
+  // A session that is resumed: the host holds none of what the mod wrote to
+  // state in session.start.
+  let isStarting = true
+  on('state.set', ($, e, next) =>
+    isStarting ? { value: { isSet: true, version: 0 } } : next(e),
+  )
+  elsewhere({
+    id: 'aa11aa11',
+    set: {
+      title: 'Recorded before the restart',
+      category: 'task',
+      priority: 'medium',
+      status: 'open',
+      project: '/work/app',
+    },
+  })
+  await $.session.start(start)
+  isStarting = false
+
+  expect(String((await call($, 'list', {})).result)).toMatch(
+    'Recorded before the restart',
+  )
+
+  await clock.advance(5000)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect((await ui.find({ key: 'open:aa11aa11' }))?.text).toMatch(
+    'Recorded before the restart',
+  )
+  await ui.unmount()
+})
+
 test('marking an item done takes it off the list', async ($, on) => {
   const { ids } = world(on)
   await $.session.start(start)
