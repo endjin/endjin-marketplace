@@ -37,15 +37,25 @@ Claude is asked to mark it done with a one-line resolution when it finishes.
 
 ## One backlog across sessions
 
-Each item is one JSON file in `~/.claude/backlog/items/` (under `CLAUDE_CONFIG_DIR` when that is
-set). Every session with the plugin enabled reads and writes that folder, re-reads it every five
-seconds, and shows a toast when another session adds an item.
+The backlog is a folder of change records, `~/.claude/backlog/items/` (under `CLAUDE_CONFIG_DIR`
+when that is set). Every session with the plugin enabled reads and writes that folder, re-reads
+it every five seconds, and shows a toast when another session adds an item.
+
+Each change to an item is a small JSON file of its own, named `<id>.<time>.<token>.json`, that
+says which fields it sets and which note it appends. A file is written once and never rewritten.
+An item is its records applied in time order. So two sessions that change the same item never
+overwrite each other: a note from one and a status from another both stand, and when both set
+the same field the later one wins.
 
 The pane lists the current project's items; **All projects** shows the rest. An item from
 another project says so in its detail view, because acting on it runs in the session you are in,
 not the one that recorded it.
 
 Items are never deleted, only marked done or dismissed. To clear the backlog, delete the files.
+
+Limits are enforced when Claude writes, never by cutting text short: one `add` call takes at
+most 50 items, a detail at most 20,000 characters, and a note at most 10,000. A call over a
+limit is refused with the reason, so Claude can split it.
 
 ## Requirements and limits
 
@@ -72,5 +82,5 @@ Loading it with `--plugin-dir` makes the engine write its type declarations into
 | Path | Holds |
 | --- | --- |
 | `hooks/register.tsx` | The hooks module: tools, command, system-prompt section, storage and the pane |
-| `types/index.d.ts` | The item's shape and the `$.state` contract |
+| `types/index.d.ts` | The item and change-record shapes, and the `$.state` contract |
 | `tests/backlog.test.ts` | Behaviour tests over an in-memory folder, on the terminal and desktop surfaces |

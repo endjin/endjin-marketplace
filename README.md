@@ -99,7 +99,7 @@ To use it:
 
 Deciding, fixing and directing each send the item to Claude as a prompt in the session where you pressed the button. Claude marks the item done, with a one-line resolution, when it finishes.
 
-Every session that has the plugin enabled shares one backlog. Items are JSON files in `~/.claude/backlog/items/`. The pane shows the current project's items; select **All projects** to see the rest. The status line shows the open count, for example `backlog: 4 open, 1 to decide`.
+Every session that has the plugin enabled shares one backlog. It is a folder of JSON change records, `~/.claude/backlog/items/`, in which no file is ever rewritten, so sessions that change the same item do not overwrite each other. The pane shows the current project's items; select **All projects** to see the rest. The status line shows the open count, for example `backlog: 4 open, 1 to decide`.
 
 See the [backlog README](plugins/backlog/README.md) for the tools Claude uses, the storage format, and how to develop the mod.
 

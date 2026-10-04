@@ -3,6 +3,8 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import type {
   BacklogCategory,
+  BacklogChange,
+  BacklogFields,
   BacklogItem,
   BacklogOption,
   BacklogPriority,
@@ -12,6 +14,12 @@ import type {
 
 const PANE = 'backlog'
 const POLL_MS = 5000
+const BATCH_MAX = 50
+const DETAIL_MAX = 20000
+const NOTE_MAX = 10000
+// A Markdown element draws at most 10,000 characters: longer text is drawn as
+// several, cut at paragraph breaks.
+const CHUNK = 9000
 
 const CATEGORIES = ['decision', 'defect', 'issue', 'task'] as const
 const PRIORITIES = ['critical', 'high', 'medium', 'low'] as const
@@ -58,15 +66,16 @@ const view = atom({ plugin: 'backlog', key: 'view' } as const, {
 })
 const project = atom({ plugin: 'backlog', key: 'project' } as const, '')
 
-// File name to what was last read from it; `stamp` is the listing's time and
-// size, '' for a file this session just wrote, so the next poll reads it back.
-const known = new Map<string, { stamp: string; item: BacklogItem }>()
+// File name to the change record last read from it; `stamp` is the listing's
+// time and size, '' for a file this session just wrote.
+const records = new Map<string, { stamp: string; change: BacklogChange }>()
 const unreadable = new Map<string, string>()
 let hasLoaded = false
+let lastAt = 0
 let queue: Promise<unknown> = Promise.resolve()
 
-// Reads and writes of the folder run one at a time: a poll never loads a file
-// a save is halfway through.
+// Reads and writes of the folder run one at a time within this session.
+// Across sessions nothing needs a lock: every write is a new file.
 const inTurn = <T,>(work: () => Promise<T>): Promise<T> => {
   const run = queue.then(work, work)
   queue = run.catch(() => undefined)
@@ -88,14 +97,15 @@ const oneLine = (text: unknown, limit: number): string =>
     .replace(/\s+/g, ' ')
     .slice(0, limit)
 
-const oneOf = <T extends string>(
-  allowed: readonly T[],
-  value: unknown,
-  fallback: T,
-): T => allowed.find(one => one === value) ?? fallback
-
 const record = (raw: unknown): Record<string, unknown> =>
   typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : {}
+
+const slash = (path: string): string =>
+  path.replace(/\\/g, '/').replace(/\/+$/, '')
+
+// A project root as items are compared by it. A path keeps its inner
+// whitespace: `/work/my  app` and `/work/my app` are two projects.
+const toPath = (path: string): string => slash(clean(path, 1000))
 
 const toOptions = (raw: unknown): BacklogOption[] =>
   (Array.isArray(raw) ? raw : [])
@@ -110,36 +120,115 @@ const toOptions = (raw: unknown): BacklogOption[] =>
     .filter(option => option.label !== '')
     .slice(0, 9)
 
+// The fields `raw` names, each held to its shape; one it leaves out, or names
+// with a value of the wrong kind, is left out.
+const toFields = (raw: Record<string, unknown>): Partial<BacklogFields> => {
+  const set: Partial<BacklogFields> = {}
+  const title = oneLine(raw.title, 200)
+  const category = CATEGORIES.find(one => one === raw.category)
+  const priority = PRIORITIES.find(one => one === raw.priority)
+  const status = STATUSES.find(one => one === raw.status)
+
+  if (title !== '') {
+    set.title = title
+  }
+
+  if (category !== undefined) {
+    set.category = category
+  }
+
+  if (priority !== undefined) {
+    set.priority = priority
+  }
+
+  if (status !== undefined) {
+    set.status = status
+  }
+
+  if (typeof raw.detail === 'string') {
+    set.detail = clean(raw.detail, DETAIL_MAX)
+  }
+
+  if (Array.isArray(raw.options)) {
+    set.options = toOptions(raw.options)
+  }
+
+  if (typeof raw.recommendation === 'string') {
+    set.recommendation = clean(raw.recommendation, 2000)
+  }
+
+  if (typeof raw.resolution === 'string') {
+    set.resolution = clean(raw.resolution, 2000)
+  }
+
+  if (typeof raw.project === 'string') {
+    set.project = toPath(raw.project)
+  }
+
+  return set
+}
+
 const ID = /^[a-z0-9]{4,12}$/
 
-const toItem = (raw: unknown): BacklogItem | undefined => {
+const toChange = (raw: unknown): BacklogChange | undefined => {
   const fields = record(raw)
   const id = typeof fields.id === 'string' && ID.test(fields.id) ? fields.id : ''
-  const title = oneLine(fields.title, 200)
+  const at = Number(fields.at)
 
-  if (id === '' || title === '') {
+  if (id === '' || !Number.isFinite(at)) {
     return undefined
   }
 
   return {
     id,
-    title,
-    category: oneOf(CATEGORIES, fields.category, 'task'),
-    priority: oneOf(PRIORITIES, fields.priority, 'medium'),
-    status: oneOf(STATUSES, fields.status, 'open'),
-    detail: clean(fields.detail, 20000),
-    options: toOptions(fields.options),
-    recommendation: clean(fields.recommendation, 2000),
-    resolution: clean(fields.resolution, 2000),
-    project: oneLine(fields.project, 500),
+    at,
     sessionId: oneLine(fields.sessionId, 100),
-    createdAt: Number(fields.createdAt) || 0,
-    updatedAt: Number(fields.updatedAt) || 0,
+    set: toFields(record(fields.set)),
+    note: clean(fields.note, NOTE_MAX),
   }
 }
 
-const slash = (path: string): string =>
-  path.replace(/\\/g, '/').replace(/\/+$/, '')
+// Every item, each the fold of its records in `at` order. Records set only
+// the fields they name, so a note from one session and a status from another
+// both stand, whichever was written first.
+const fold = (): BacklogItem[] => {
+  const ordered = [...records.entries()].sort(
+    ([nameA, a], [nameB, b]) =>
+      a.change.at - b.change.at || (nameA < nameB ? -1 : 1),
+  )
+  const byId = new Map<string, BacklogItem>()
+
+  for (const [, { change }] of ordered) {
+    const held: BacklogItem = byId.get(change.id) ?? {
+      id: change.id,
+      title: '',
+      category: 'task',
+      priority: 'medium',
+      status: 'open',
+      detail: '',
+      options: [],
+      recommendation: '',
+      resolution: '',
+      notes: [],
+      project: '',
+      sessionId: change.sessionId,
+      createdAt: change.at,
+      updatedAt: change.at,
+    }
+
+    byId.set(change.id, {
+      ...held,
+      ...change.set,
+      notes:
+        change.note === ''
+          ? held.notes
+          : [...held.notes, { at: change.at, text: change.note }],
+      updatedAt: change.at,
+    })
+  }
+
+  return [...byId.values()].filter(item => item.title !== '')
+}
 
 const nameOf = (path: string): string =>
   path.split('/').filter(part => part !== '').at(-1) ?? path
@@ -150,10 +239,62 @@ const isOpen = (item: BacklogItem): boolean =>
 const fit = (text: string, width: number): string =>
   text.length > width ? `${text.slice(0, Math.max(1, width - 1))}…` : text
 
+const day = (at: number): string =>
+  at > 0 ? new Date(at).toISOString().slice(0, 10) : ''
+
 const byUrgency = (a: BacklogItem, b: BacklogItem): number =>
   Number(isOpen(b)) - Number(isOpen(a)) ||
   PRIORITIES.indexOf(a.priority) - PRIORITIES.indexOf(b.priority) ||
   b.updatedAt - a.updatedAt
+
+const ALPHABET = '0123456789abcdefghijklmnopqrstuvwxyz'
+
+const token = (length: number): string =>
+  [...crypto.getRandomValues(new Uint8Array(length))]
+    .map(byte => ALPHABET.charAt(byte % ALPHABET.length))
+    .join('')
+
+// `text` whole, in pieces a Markdown element can draw: cut at the last blank
+// line outside a code fence, or between lines when a piece has none.
+const chunks = (text: string, limit = CHUNK): string[] => {
+  const parts: string[] = []
+  let current = ''
+  let safe = 0
+  let isFenced = false
+  const flush = (upTo: number) => {
+    parts.push(current.slice(0, upTo).trimEnd())
+    current = current.slice(upTo)
+    safe = 0
+  }
+
+  for (const whole of text.split('\n')) {
+    for (let from = 0; from === 0 || from < whole.length; from += limit) {
+      const line = whole.slice(from, from + limit)
+
+      if (current !== '' && current.length + line.length > limit) {
+        flush(safe > 0 ? safe : current.length)
+      }
+
+      if (current !== '' && current.length + line.length > limit) {
+        flush(current.length)
+      }
+
+      current += `${line}\n`
+    }
+
+    if (/^\s*(```|~~~)/.test(whole)) {
+      isFenced = !isFenced
+    }
+
+    if (!isFenced && whole.trim() === '') {
+      safe = current.length
+    }
+  }
+
+  parts.push(current.trimEnd())
+
+  return parts.filter(part => part.trim() !== '')
+}
 
 const folder = async ($: EngineInterface): Promise<string> => {
   const config = await $.env.get('CLAUDE_CONFIG_DIR')
@@ -171,16 +312,16 @@ const folder = async ($: EngineInterface): Promise<string> => {
 const load = async (
   $: EngineInterface,
   path: string,
-): Promise<BacklogItem | undefined> => {
+): Promise<BacklogChange | undefined> => {
   try {
-    return toItem(JSON.parse(await $.fs.read(path)))
+    return toChange(JSON.parse(await $.fs.read(path)))
   } catch {
     return undefined
   }
 }
 
-const publish = async ($: EngineInterface): Promise<void> => {
-  const all = [...known.values()].map(held => held.item)
+const publish = async ($: EngineInterface): Promise<BacklogItem[]> => {
+  const all = fold()
   await update($, items, () => all)
 
   const here = await read($, project)
@@ -191,66 +332,86 @@ const publish = async ($: EngineInterface): Promise<void> => {
   $.ui.status(
     open.length === 0 ? undefined : `backlog: ${open.length} open${toDecide}`,
   )
+
+  return all
 }
 
-const write = async ($: EngineInterface, item: BacklogItem): Promise<void> => {
-  const name = `${item.id}.json`
+// Writes one change as a file of its own. Its name carries 8 random
+// characters, so no session's write lands on another's, and its time is past
+// every record of the item this session has read, so it folds after them.
+const append = async (
+  $: EngineInterface,
+  id: string,
+  set: Partial<BacklogFields>,
+  note = '',
+): Promise<void> => {
+  const seen = [...records.values()]
+    .filter(held => held.change.id === id)
+    .map(held => held.change.at + 1)
+  const at = Math.max(await $.clock.now(), lastAt + 1, ...seen)
+  lastAt = at
+
+  const name = `${id}.${at.toString(36)}.${token(8)}.json`
+  const change: BacklogChange = {
+    id,
+    at,
+    sessionId: await $.session.id(),
+    set,
+    note,
+  }
   await $.fs.write(
     `${await folder($)}/${name}`,
-    `${JSON.stringify(item, null, 2)}\n`,
+    `${JSON.stringify(change, null, 2)}\n`,
   )
-  known.set(name, { stamp: '', item })
+  records.set(name, { stamp: '', change })
 }
 
-// Brings `known` level with the folder, which every session writes to.
-const sync = ($: EngineInterface): Promise<void> =>
-  inTurn(async () => {
-    const dir = await folder($)
-    const entries = (await $.fs.exists(dir)) ? await $.fs.list(dir) : []
-    const names = new Set<string>()
-    const arrived: BacklogItem[] = []
-    let hasChanged = !hasLoaded
+// Brings `records` level with the folder, which every session writes to.
+// Runs inside the queue.
+const level = async ($: EngineInterface): Promise<void> => {
+  const dir = await folder($)
+  const entries = (await $.fs.exists(dir)) ? await $.fs.list(dir) : []
+  const names = new Set<string>()
+  const before = new Set(fold().map(one => one.id))
+  let hasChanged = !hasLoaded
 
-    for (const entry of entries) {
-      if (entry.kind !== 'file' || !entry.name.endsWith('.json')) {
-        continue
-      }
+  for (const entry of entries) {
+    if (entry.kind !== 'file' || !entry.name.endsWith('.json')) {
+      continue
+    }
 
-      names.add(entry.name)
-      const stamp = `${entry.mtimeMs}:${entry.size}`
-      const held = known.get(entry.name)
+    names.add(entry.name)
+    const stamp = `${entry.mtimeMs}:${entry.size}`
 
-      if (held?.stamp === stamp || unreadable.get(entry.name) === stamp) {
-        continue
-      }
+    if (
+      records.get(entry.name)?.stamp === stamp ||
+      unreadable.get(entry.name) === stamp
+    ) {
+      continue
+    }
 
-      const item = await load($, `${dir}/${entry.name}`)
+    const change = await load($, `${dir}/${entry.name}`)
 
-      if (item === undefined) {
-        unreadable.set(entry.name, stamp)
-        continue
-      }
+    if (change === undefined) {
+      // Half-written, or not a record: read again once the file changes.
+      unreadable.set(entry.name, stamp)
+      continue
+    }
 
-      if (held === undefined) {
-        arrived.push(item)
-      }
+    unreadable.delete(entry.name)
+    records.set(entry.name, { stamp, change })
+    hasChanged = true
+  }
 
-      unreadable.delete(entry.name)
-      known.set(entry.name, { stamp, item })
+  for (const name of [...records.keys()]) {
+    if (!names.has(name)) {
+      records.delete(name)
       hasChanged = true
     }
+  }
 
-    for (const name of [...known.keys()]) {
-      if (!names.has(name)) {
-        known.delete(name)
-        hasChanged = true
-      }
-    }
-
-    if (hasChanged) {
-      await publish($)
-    }
-
+  if (hasChanged) {
+    const arrived = (await publish($)).filter(one => !before.has(one.id))
     const first = arrived[0]
 
     if (hasLoaded && first !== undefined) {
@@ -260,55 +421,46 @@ const sync = ($: EngineInterface): Promise<void> =>
           : `Backlog: ${arrived.length} new items from other sessions`,
       )
     }
+  }
 
-    hasLoaded = true
-  })
+  hasLoaded = true
+}
 
-// Edits one item from its file as it stands now, another session's writes
-// included, and resolves the item as written; undefined when there is none.
-const change = (
+const sync = ($: EngineInterface): Promise<void> => inTurn(() => level($))
+
+// Changes one item as the folder holds it now, and resolves the item as it
+// then stands; undefined when no item has the id.
+const edit = (
   $: EngineInterface,
   id: string,
-  edit: (item: BacklogItem) => BacklogItem,
+  set: Partial<BacklogFields>,
+  note = '',
 ): Promise<BacklogItem | undefined> =>
   inTurn(async () => {
-    const current = ID.test(id)
-      ? await load($, `${await folder($)}/${id}.json`)
-      : undefined
+    await level($)
 
-    if (current === undefined) {
+    if (!fold().some(one => one.id === id)) {
       return undefined
     }
 
-    const edited: BacklogItem = {
-      ...edit(current),
-      id: current.id,
-      updatedAt: await $.clock.now(),
-    }
-    await write($, edited)
-    await publish($)
+    await append($, id, set, note)
 
-    return edited
+    return (await publish($)).find(one => one.id === id)
   })
 
-const mint = (): string => {
-  for (;;) {
-    const id = Math.random().toString(36).slice(2, 6).padEnd(4, '0')
-
-    if (!known.has(`${id}.json`)) {
-      return id
-    }
-  }
-}
-
-const add = ($: EngineInterface, drafts: readonly unknown[]): Promise<string> =>
+const add = (
+  $: EngineInterface,
+  drafts: readonly unknown[],
+): Promise<{ text: string; recorded: number }> =>
   inTurn(async () => {
+    // Level first: an item another session closed since the last poll is no
+    // twin, and one it opened is.
+    await level($)
     const here = await read($, project)
-    const sessionId = await $.session.id()
-    const now = await $.clock.now()
     const lines: string[] = []
+    let recorded = 0
 
-    for (const draft of drafts.slice(0, 50)) {
+    for (const draft of drafts) {
       const fields = record(draft)
       const title = oneLine(fields.title, 200)
 
@@ -317,54 +469,89 @@ const add = ($: EngineInterface, drafts: readonly unknown[]): Promise<string> =>
         continue
       }
 
-      const twin = [...known.values()]
-        .map(held => held.item)
-        .find(
-          one =>
-            isOpen(one) &&
-            one.project === here &&
-            one.title.toLowerCase() === title.toLowerCase(),
+      if (
+        typeof fields.detail === 'string' &&
+        fields.detail.length > DETAIL_MAX
+      ) {
+        lines.push(
+          `- skipped "${fit(title, 60)}": its detail is ${fields.detail.length} characters and the limit is ${DETAIL_MAX}`,
         )
-      const options = toOptions(fields.options)
-
-      if (twin !== undefined) {
-        await write($, {
-          ...twin,
-          priority: oneOf(PRIORITIES, fields.priority, twin.priority),
-          detail: clean(fields.detail, 20000) || twin.detail,
-          options: options.length > 0 ? options : twin.options,
-          recommendation:
-            clean(fields.recommendation, 2000) || twin.recommendation,
-          updatedAt: now,
-        })
-        lines.push(`- ${twin.id}: already on the backlog, refreshed`)
         continue
       }
 
-      const item: BacklogItem = {
-        id: mint(),
+      const given = toFields({
+        category: fields.category,
+        priority: fields.priority,
+        detail: fields.detail,
+        options: fields.options,
+        recommendation: fields.recommendation,
+      })
+      const current = fold()
+      const twin = current.find(
+        one =>
+          isOpen(one) &&
+          one.project === here &&
+          one.title.toLowerCase() === title.toLowerCase(),
+      )
+
+      if (twin !== undefined) {
+        // Only what the draft gives: the twin's status, resolution and notes
+        // are not this call's to set.
+        const refreshed: Partial<BacklogFields> = {}
+
+        if (given.priority !== undefined) {
+          refreshed.priority = given.priority
+        }
+
+        if (given.detail !== undefined && given.detail !== '') {
+          refreshed.detail = given.detail
+        }
+
+        if (given.options !== undefined && given.options.length > 0) {
+          refreshed.options = given.options
+        }
+
+        if (given.recommendation !== undefined && given.recommendation !== '') {
+          refreshed.recommendation = given.recommendation
+        }
+
+        await append($, twin.id, refreshed)
+        lines.push(`- ${twin.id}: already on the backlog, refreshed`)
+        recorded += 1
+        continue
+      }
+
+      let id = token(8)
+
+      while (current.some(one => one.id === id)) {
+        id = token(8)
+      }
+
+      await append($, id, {
+        category: 'task',
+        priority: 'medium',
+        detail: '',
+        options: [],
+        recommendation: '',
+        ...given,
         title,
-        category: oneOf(CATEGORIES, fields.category, 'task'),
-        priority: oneOf(PRIORITIES, fields.priority, 'medium'),
         status: 'open',
-        detail: clean(fields.detail, 20000),
-        options,
-        recommendation: clean(fields.recommendation, 2000),
         resolution: '',
         project: here,
-        sessionId,
-        createdAt: now,
-        updatedAt: now,
-      }
-      await write($, item)
-      lines.push(`- ${item.id}: ${item.title}`)
+      })
+      lines.push(`- ${id}: ${title}`)
+      recorded += 1
     }
 
     await publish($)
 
-    return lines.length === 0
-      ? 'Nothing recorded: `items` was empty.'
-      : `Recorded on the backlog:\n${lines.join('\n')}`
+    return {
+      text:
+        lines.length === 0
+          ? 'Nothing recorded: `items` was empty.'
+          : `Recorded on the backlog:\n${lines.join('\n')}`,
+      recorded,
+    }
   })
 
 const describe = (item: BacklogItem): string =>
@@ -383,6 +570,7 @@ const describe = (item: BacklogItem): string =>
       : '',
     item.recommendation === '' ? '' : `Recommendation: ${item.recommendation}`,
     item.resolution === '' ? '' : `Resolution: ${item.resolution}`,
+    ...item.notes.map(note => `Note, ${day(note.at)}: ${note.text}`),
   ]
     .filter(part => part !== '')
     .join('\n\n')
@@ -390,33 +578,44 @@ const describe = (item: BacklogItem): string =>
 const closing = (item: BacklogItem): string =>
   `When this is finished, call mcp__backlog__update for ${item.id} with status "done" and a one-line resolution. If it cannot be finished, add a note to the item saying what is in the way.`
 
-// Hands an item to this session's Claude as the person's own prompt; it runs
-// as a turn of its own once the session is idle.
+// Hands an item to this session's Claude as the person's own prompt. The
+// item changes only once the prompt has entered: one that did not is said so,
+// and the item is left as it was, its actions still there to press again.
 const send = async (
   $: EngineInterface,
   item: BacklogItem,
   lead: string,
   resolution?: string,
 ): Promise<void> => {
-  const sent = await change($, item.id, one => ({
-    ...one,
-    status: 'in_progress',
-    resolution: resolution ?? one.resolution,
-  }))
+  let refusal = ''
 
-  if (sent === undefined) {
-    $.ui.toast(`Backlog: ${item.id} is no longer there`)
+  try {
+    const entered = await $.prompt.submit({
+      text: `${lead}\n\n${describe(item)}\n\n${closing(item)}`,
+      asUser: true,
+    })
+    refusal = entered.drop ?? ''
+  } catch (error) {
+    refusal = String(error)
+  }
+
+  if (refusal !== '') {
+    $.ui.toast(
+      `Backlog: ${item.id} was not sent to Claude (${fit(refusal, 80)}). It is unchanged: open it and press the action again.`,
+      { timeoutMs: 10000 },
+    )
 
     return
   }
 
-  void $.prompt
-    .submit({
-      text: `${lead}\n\n${describe(sent)}\n\n${closing(sent)}`,
-      asUser: true,
-    })
-    .catch(() => undefined)
-  $.ui.toast(`Sent to Claude: ${fit(sent.title, 60)}`)
+  await edit(
+    $,
+    item.id,
+    resolution === undefined
+      ? { status: 'in_progress' }
+      : { status: 'in_progress', resolution },
+  )
+  $.ui.toast(`Sent to Claude: ${fit(item.title, 60)}`)
 }
 
 const show = ($: EngineInterface, id: string | null) =>
@@ -453,11 +652,13 @@ const ITEM_SCHEMA = {
     priority: { type: 'string', enum: PRIORITIES },
     detail: {
       type: 'string',
+      maxLength: DETAIL_MAX,
       description:
         'Markdown that stands alone for a reader who has not seen this session: what you observed, where (file:line), why it matters, what fixing it involves.',
     },
     options: {
       type: 'array',
+      maxItems: 9,
       description:
         'For a decision: the choices the person picks from, at most nine.',
       items: {
@@ -482,7 +683,7 @@ const ITEM_SCHEMA = {
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
-    const root = slash(await $.session.root())
+    const root = toPath(await $.session.root())
     await update($, project, () => root)
 
     await $.command.register({
@@ -492,12 +693,16 @@ export const register: Register = on => {
     })
     await $.tool.register({
       name: 'add',
-      description:
-        "Records items on the person's backlog pane: defects found, issues noticed, follow-up tasks, and decisions that need the person. Call it when a piece of work ends and leaves any of these, as well as mentioning them in the reply, and when you reach a choice that is the person's to make. One call takes several items. An open item with the same title in this project is refreshed, not duplicated.",
+      description: `Records items on the person's backlog pane: defects found, issues noticed, follow-up tasks, and decisions that need the person. Call it when a piece of work ends and leaves any of these, as well as mentioning them in the reply, and when you reach a choice that is the person's to make. One call takes up to ${BATCH_MAX} items. An open item with the same title in this project is refreshed, not duplicated.`,
       inputSchema: {
         type: 'object',
         properties: {
-          items: { type: 'array', minItems: 1, items: ITEM_SCHEMA },
+          items: {
+            type: 'array',
+            minItems: 1,
+            maxItems: BATCH_MAX,
+            items: ITEM_SCHEMA,
+          },
         },
         required: ['items'],
       },
@@ -516,7 +721,8 @@ export const register: Register = on => {
           title: { type: 'string' },
           note: {
             type: 'string',
-            description: "Markdown appended to the item's detail.",
+            maxLength: NOTE_MAX,
+            description: "Markdown appended to the item's notes.",
           },
           resolution: {
             type: 'string',
@@ -594,34 +800,51 @@ export const register: Register = on => {
 
   on('tool.call', { tool: 'mcp__backlog__add' }, async ($, e) => {
     const drafts = Array.isArray(e.items) ? e.items : []
-    const result = await add($, drafts)
 
-    if (drafts.length > 0) {
+    if (drafts.length > BATCH_MAX) {
+      return {
+        deny: `mcp__backlog__add takes at most ${BATCH_MAX} items in one call and got ${drafts.length}. Nothing was recorded: send them in batches.`,
+      }
+    }
+
+    const { text, recorded } = await add($, drafts)
+
+    if (recorded > 0) {
       $.ui.toast(
-        `Backlog: ${drafts.length} ${drafts.length === 1 ? 'item' : 'items'} recorded`,
+        `Backlog: ${recorded} ${recorded === 1 ? 'item' : 'items'} recorded`,
       )
     }
 
-    return { result }
+    return { result: text }
   })
 
   on('tool.call', { tool: 'mcp__backlog__update' }, async ($, e) => {
     const id = oneLine(e.id, 12)
-    const note = clean(e.note, 10000)
-    const title = oneLine(e.title, 200)
-    const stamp = new Date(await $.clock.now()).toISOString().slice(0, 10)
-    const edited = await change($, id, one => ({
-      ...one,
-      title: title === '' ? one.title : title,
-      status: oneOf(STATUSES, e.status, one.status),
-      priority: oneOf(PRIORITIES, e.priority, one.priority),
-      category: oneOf(CATEGORIES, e.category, one.category),
-      detail:
-        note === ''
-          ? one.detail
-          : `${one.detail}\n\n**Note, ${stamp}:** ${note}`.trim(),
-      resolution: clean(e.resolution, 2000) || one.resolution,
-    }))
+
+    if (typeof e.note === 'string' && e.note.length > NOTE_MAX) {
+      return {
+        deny: `The note is ${e.note.length} characters and the limit is ${NOTE_MAX}. Nothing was changed: shorten it, or send it as several notes.`,
+      }
+    }
+
+    const note = clean(e.note, NOTE_MAX)
+    const resolution = clean(e.resolution, 2000)
+    const set = toFields({
+      title: e.title,
+      status: e.status,
+      priority: e.priority,
+      category: e.category,
+      ...(resolution === '' ? {} : { resolution }),
+    })
+
+    if (note === '' && Object.keys(set).length === 0) {
+      return {
+        result:
+          'Nothing to change: give a status, priority, category, title, resolution or note.',
+      }
+    }
+
+    const edited = await edit($, id, set, note)
 
     return {
       result:
@@ -687,19 +910,15 @@ export const register: Register = on => {
       const raised = PRIORITIES[rank - 1]
       const lowered = PRIORITIES[rank + 1]
       const isDecision = selected.category === 'decision'
-      const recorded =
-        selected.createdAt > 0
-          ? new Date(selected.createdAt).toISOString().slice(0, 10)
-          : ''
       const facts = [
         selected.category,
         `${selected.priority} priority`,
         STATUS[selected.status],
         nameOf(selected.project),
-        recorded,
+        day(selected.createdAt),
       ].filter(fact => fact !== '')
       const close = async (status: BacklogStatus) => {
-        await change($, selected.id, one => ({ ...one, status }))
+        await edit($, selected.id, { status })
         await show($, null)
       }
 
@@ -723,10 +942,20 @@ export const register: Register = on => {
             )}
           </Box>
           {selected.detail !== '' && (
-            <Box marginTop={1}>
-              <Markdown text={selected.detail.slice(0, 9000)} />
+            <Box marginTop={1} flexDirection="column">
+              {chunks(selected.detail).map(part => (
+                <Markdown text={part} />
+              ))}
             </Box>
           )}
+          {selected.notes.map(note => (
+            <Box marginTop={1} flexDirection="column">
+              <Text bold>{`Note, ${day(note.at)}`}</Text>
+              {chunks(note.text).map(part => (
+                <Markdown text={part} />
+              ))}
+            </Box>
+          ))}
           {selected.recommendation !== '' && (
             <Box marginTop={1} flexDirection="column">
               <Text bold>Claude recommends</Text>
@@ -832,27 +1061,21 @@ export const register: Register = on => {
               <Button
                 key="reopen"
                 label="Reopen"
-                onPress={() =>
-                  change($, selected.id, one => ({ ...one, status: 'open' }))
-                }
+                onPress={() => edit($, selected.id, { status: 'open' })}
               />
             )}
             {raised !== undefined && (
               <Button
                 key="raise"
                 label="Priority +"
-                onPress={() =>
-                  change($, selected.id, one => ({ ...one, priority: raised }))
-                }
+                onPress={() => edit($, selected.id, { priority: raised })}
               />
             )}
             {lowered !== undefined && (
               <Button
                 key="lower"
                 label="Priority -"
-                onPress={() =>
-                  change($, selected.id, one => ({ ...one, priority: lowered }))
-                }
+                onPress={() => edit($, selected.id, { priority: lowered })}
               />
             )}
           </Box>
