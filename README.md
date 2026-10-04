@@ -15,17 +15,93 @@ endjin-marketplace/
     │   └── skills/
     │       └── explain-diff-html/
     │           └── SKILL.md      # One directory per skill
-    └── writing-tools/
+    ├── writing-tools/
+    │   ├── .claude-plugin/
+    │   │   └── plugin.json
+    │   └── skills/
+    │       └── clear-technical-writing/  # Skills can ship references/ and scripts/ alongside SKILL.md
+    │           ├── SKILL.md
+    │           ├── references/
+    │           └── scripts/
+    └── backlog/                  # A mod: a hooks module instead of skills
         ├── .claude-plugin/
         │   └── plugin.json
-        └── skills/
-            └── clear-technical-writing/  # Skills can ship references/ and scripts/ alongside SKILL.md
-                ├── SKILL.md
-                ├── references/
-                └── scripts/
+        ├── hooks/
+        │   ├── hooks.json        # Names the hooks module
+        │   └── register.tsx      # The mod: pane, tools, /backlog
+        ├── types/index.d.ts      # Item shape and state contract
+        └── tests/                # Run with `claude plugin test`
 ```
 
 Each plugin entry in `marketplace.json` references its directory with an explicit relative path (e.g. `"source": "./plugins/code-review-tools"`).
+
+## Plugins
+
+| Plugin | Kind | What it gives you |
+| --- | --- | --- |
+| [`code-review-tools`](#code-review-tools) | Skill | `explain-diff-html`: a rich, self-contained HTML explanation of a code change, branch, or PR |
+| [`writing-tools`](#writing-tools) | Skill | `clear-technical-writing`: writes and rewrites technical text so it is plain, consistent, and inclusive |
+| [`backlog`](#backlog) | Mod (Claude Code only) | A side pane that tracks the defects, issues, tasks and decisions your sessions turn up |
+
+Install any of them with `/plugin install <plugin>@endjin` once the marketplace is added; see [Using the marketplace with Claude Code](#using-the-marketplace-with-claude-code).
+
+### code-review-tools
+
+`explain-diff-html` builds one HTML page that explains a code change to a reader who has not seen it. The page has four parts:
+
+- **Background**: the existing system the change touches, with a deeper introduction that an experienced reader can skip.
+- **Intuition**: the core idea of the change, shown with toy data and diagrams.
+- **Code**: a walkthrough of the changes, grouped so they read in a sensible order.
+- **Quiz**: five interactive multiple-choice questions that check you understood the change.
+
+To use it, name the change you want explained:
+
+```text
+/code-review-tools:explain-diff-html the changes on this branch
+/code-review-tools:explain-diff-html PR 42
+```
+
+You can also ask in your own words, for example "give me a rich explanation of this diff", and the agent picks the skill up from its description.
+
+The page is saved as `.explanations/YYYY-MM-DD-explanation-<slug>.html` at the repository root, and `.explanations/` is added to `.gitignore`. Open the file in VS Code's Simple Browser or in your own browser.
+
+### writing-tools
+
+`clear-technical-writing` writes and rewrites technical text so that every reader, including one whose first language is not English, reads it correctly the first time. It applies short sentences, active voice, one term per concept, concrete values, and inclusive language.
+
+It covers READMEs, API docs, ADRs, specifications, runbooks, changelogs, release notes, error messages, UI text, commit messages, data dictionaries, incident reports, model cards, and experiment reports. It carries separate guidance for application development, data engineering, and data science documents.
+
+To use it, point it at the text:
+
+```text
+/writing-tools:clear-technical-writing rewrite docs/runbook.md
+/writing-tools:clear-technical-writing review the error messages in src/api/errors.ts
+```
+
+You can also ask in your own words, for example "tighten this README" or "make this release note clearer".
+
+The skill includes a checker script that flags long sentences, passive voice, complex tenses, inflated words, vague qualifiers, non-inclusive terms, Latin abbreviations, and long noun chains. The agent runs it on each draft and fixes what it finds. The checker needs Python 3 on `PATH`.
+
+### backlog
+
+`backlog` is a mod: it adds a pane to Claude Code that keeps the defects, issues, follow-up tasks and decisions from your sessions in one list, so they do not scroll away in the transcript. It needs a Claude Code build with mod support, and it does nothing in other agents.
+
+To use it:
+
+1. **Install it and reload.** The pane opens at session start in a terminal at least 144 columns wide. In a narrower terminal, run `/backlog` to open it.
+2. **Work as usual.** When a piece of work ends, Claude records what it leaves behind: defects, issues, tasks, and decisions that need you. You can also tell it to, for example "add that to the backlog as a high-priority defect".
+3. **Triage in the pane.** Items are grouped as Decisions, Defects, Issues and Tasks, and each group is sorted from critical to low. Select an item to read its full context and Claude's recommendation.
+4. **Act on an item** from its detail view:
+   - Pick one of a decision's options, or select **Accept recommendation**.
+   - Select **Fix now** on a defect, issue or task.
+   - Type in the **Direct** field to tell Claude what to do in your own words.
+   - Select **Mark done** or **Dismiss**, or change the priority.
+
+Deciding, fixing and directing each send the item to Claude as a prompt in the session where you pressed the button. Claude marks the item done, with a one-line resolution, when it finishes.
+
+Every session that has the plugin enabled shares one backlog. Items are JSON files in `~/.claude/backlog/items/`. The pane shows the current project's items; select **All projects** to see the rest. The status line shows the open count, for example `backlog: 4 open, 1 to decide`.
+
+See the [backlog README](plugins/backlog/README.md) for the tools Claude uses, the storage format, and how to develop the mod.
 
 ## Using the marketplace with Claude Code
 
@@ -56,7 +132,7 @@ To get the latest plugin changes later (versions track git commits, so every pus
 /plugin marketplace update
 ```
 
-Skills are namespaced by plugin: for example, `explain-diff-html` (which builds a rich, self-contained HTML explanation of a code change, branch, or PR — with background, intuition, a code walkthrough, and an interactive quiz) is invoked as `/code-review-tools:explain-diff-html`, or Claude invokes it automatically based on its `description` when you ask for a rich explanation of a diff. Similarly, `clear-technical-writing` (which writes and rewrites technical text — docs, ADRs, runbooks, changelogs, error messages — so it is plain, consistent, and inclusive) is invoked as `/writing-tools:clear-technical-writing`, or automatically when you ask for clear, plain, or simplified technical writing.
+Skills are namespaced by plugin: `explain-diff-html` is invoked as `/code-review-tools:explain-diff-html`, and `clear-technical-writing` as `/writing-tools:clear-technical-writing`. Claude also invokes a skill by itself when your request matches the skill's `description`. A mod such as `backlog` registers its own command (`/backlog`) with no namespace. [Plugins](#plugins) describes how to use each one.
 
 Non-interactive (CI, scripts):
 
@@ -92,6 +168,7 @@ Portability caveats for future plugins:
 
 - Skills are fully portable; `commands/`, output styles, and the `renames` field are Claude Code-only (Copilot ignores them).
 - Copilot supports only a subset of hook events (command handlers only) and ignores rich agent frontmatter (`model`, `permissionMode`, etc.).
+- Mods (a `hooks/hooks.json` that names a hooks module under `modules`, as `backlog` does) are Claude Code-only.
 - Never add an explicit `skills` field to `plugin.json` — both tools auto-discover `skills/`, and an explicit field breaks compatibility.
 
 ## Adding a new plugin
