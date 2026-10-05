@@ -14,13 +14,32 @@ by priority, with a detail view where you decide, direct or dismiss each one.
 | `/backlog` | Opens and focuses the pane |
 | Backlog pane | Open items grouped as Decisions, Defects, Issues and Tasks, each sorted critical to low |
 | Detail view | The item's full context, Claude's recommendation, its options, and the actions below |
-| Status line | `backlog: 4 open, 1 to decide` for the current project |
+| Status line | `backlog: 4 open, 1 in progress, 2 new, 1 to decide` for the current project |
 | `mcp__backlog__add` | Claude records one or more items; an open item with the same title is refreshed, not duplicated |
-| `mcp__backlog__update` | Claude marks an item done with a resolution, re-prioritises it, or appends a note |
-| `mcp__backlog__list` | Claude lists the backlog, or reads one item in full |
+| `mcp__backlog__update` | Claude marks an item in progress or done, re-prioritises it, or appends a note |
+| `mcp__backlog__list` | Claude lists the backlog, or reads one item in full; new items are flagged `new` |
 
 A short system-prompt section tells Claude to record what a piece of work leaves behind, to
-write each item so it stands alone, and to mark items done when it settles them.
+write each item so it stands alone, to mark an item in progress when it starts work on it, and
+to mark items done when it settles them.
+
+## What is being worked on, and what is new
+
+Two marks stand before an item's title in the pane:
+
+| Mark | Means |
+| --- | --- |
+| `»` | In progress: a session is working on it. Fix now, an option, Accept recommendation and Direct set this, and so does Claude when it takes up an item itself |
+| `●` | New: the item is open and was recorded in the last 10 minutes, by this session or another |
+
+An item in progress is never also marked new. A new item loses its mark on the first five-second
+poll after its 10 minutes are up. Reopening an item ends its in-progress mark, and does not make
+it new again unless it was recorded in the last 10 minutes.
+
+The pane header counts what the list shows, and its marks are the legend:
+`3 open, » 1 in progress, ● 2 new, 1 to decide`. The status line gives the same counts for the
+current project. The detail view of an item in progress says since when, and whether this
+session or another one is working on it; the later session to take it up is the one shown.
 
 ## Acting on an item
 
@@ -39,7 +58,9 @@ Claude is asked to mark it done with a one-line resolution when it finishes.
 
 The backlog is a folder of change records, `~/.claude/backlog/items/` (under `CLAUDE_CONFIG_DIR`
 when that is set). Every session with the plugin enabled reads and writes that folder, re-reads
-it every five seconds, and shows a toast when another session adds an item.
+it every five seconds, and shows a toast when another session adds an item. When none of
+`CLAUDE_CONFIG_DIR`, `USERPROFILE` and `HOME` is set, an empty value counting as unset, there is
+no folder: the session logs why, and Claude's calls are refused, saying nothing was recorded.
 
 Each change to an item is a small JSON file of its own, named `<id>.<time>.<token>.json`, that
 says which fields it sets and which note it appends. A file is written once and never rewritten.
@@ -83,4 +104,4 @@ Loading it with `--plugin-dir` makes the engine write its type declarations into
 | --- | --- |
 | `hooks/register.tsx` | The hooks module: tools, command, system-prompt section, storage and the pane |
 | `types/index.d.ts` | The item and change-record shapes, and the `$.state` contract |
-| `tests/backlog.test.ts` | Behaviour tests over an in-memory folder, on the terminal and desktop surfaces |
+| `tests/backlog.test.ts` | Behaviour tests over an in-memory folder, on the terminal, desktop and mobile surfaces |

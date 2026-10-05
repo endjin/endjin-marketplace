@@ -32,6 +32,12 @@ export type BacklogItem = {
   /** When its first and its latest change record were written. */
   createdAt: number
   updatedAt: number
+  /**
+   * When the record that put it in progress was written, and by which session;
+   * 0 and '' when it is not in progress. Folded from the records, never stored.
+   */
+  workingSince: number
+  workingIn: string
 }
 
 /** The fields of an item a change record may set. */
@@ -75,6 +81,11 @@ declare module 'claude-code' {
       items: BacklogItem[]
       view: BacklogView
       project: string
+      /**
+       * The ids of the items marked new: open, and recorded in the last ten
+       * minutes. Held here so the pane redraws when one ages out.
+       */
+      fresh: string[]
     }
   }
 }

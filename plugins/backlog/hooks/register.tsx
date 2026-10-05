@@ -45,10 +45,16 @@ const STATUS: Record<BacklogStatus, string> = {
 }
 const MARK: Record<BacklogStatus, string> = {
   open: '',
-  in_progress: '> ',
+  in_progress: '',
   done: '✓ ',
   dismissed: 'x ',
 }
+// Drawn before a row's title, and in the header's counts as their legend. The
+// glyph carries the meaning; the colour only adds to it.
+const WORKING = { mark: '»', color: 'suggestion' } as const
+const FRESH = { mark: '●', color: 'success' } as const
+// An open item is new for this long after it was recorded.
+const FRESH_MS = 10 * 60 * 1000
 
 const GUIDANCE = `# Backlog
 
@@ -56,7 +62,7 @@ The person keeps a backlog in a side pane, shared by all their Claude Code sessi
 
 The person reads an item later, away from this conversation, and may act on it from another session. Write its detail to stand alone: what you observed, where (file and line), why it matters. A decision carries its options with their trade-offs and your recommendation.
 
-When you fix or settle an item, call mcp__backlog__update with status "done" and a one-line resolution.`
+When you start work on an item that is already on the backlog, call mcp__backlog__update with status "in_progress", so the pane shows it is being worked on. When you fix or settle an item, call mcp__backlog__update with status "done" and a one-line resolution.`
 
 const items = atom({ plugin: 'backlog', key: 'items' } as const, [])
 const view = atom({ plugin: 'backlog', key: 'view' } as const, {
@@ -65,6 +71,7 @@ const view = atom({ plugin: 'backlog', key: 'view' } as const, {
   showClosed: false,
 })
 const project = atom({ plugin: 'backlog', key: 'project' } as const, '')
+const fresh = atom({ plugin: 'backlog', key: 'fresh' } as const, [])
 
 // File name to the change record last read from it; `stamp` is the listing's
 // time and size, '' for a file this session just wrote.
@@ -170,16 +177,24 @@ const toFields = (raw: Record<string, unknown>): Partial<BacklogFields> => {
 
 const ID = /^[a-z0-9]{4,12}$/
 
+// A time as this mod writes one: milliseconds since 1970, a number. Null, '',
+// [] or true would convert to 0 or 1, and sort before every real record.
+const isTime = (at: unknown): at is number =>
+  typeof at === 'number' && Number.isFinite(at) && at > 0
+
 const toChange = (raw: unknown): BacklogChange | undefined => {
   const fields = record(raw)
   const id = typeof fields.id === 'string' && ID.test(fields.id) ? fields.id : ''
   // The first version of this mod kept an item as one whole file, `<id>.json`,
   // rewritten on every change. Such a file reads as one record that sets every
-  // field, as of its last rewrite; changes made since are records beside it.
+  // field, as of its last rewrite (its creation when the rewrite has no good
+  // time); changes made since are records beside it.
   const isWhole = fields.set === undefined && typeof fields.title === 'string'
-  const at = Number(isWhole ? (fields.updatedAt ?? fields.createdAt) : fields.at)
+  const at = (
+    isWhole ? [fields.updatedAt, fields.createdAt] : [fields.at]
+  ).find(isTime)
 
-  if (id === '' || !Number.isFinite(at)) {
+  if (id === '' || at === undefined) {
     return undefined
   }
 
@@ -218,7 +233,13 @@ const fold = (): BacklogItem[] => {
       sessionId: change.sessionId,
       createdAt: change.at,
       updatedAt: change.at,
+      workingSince: 0,
+      workingIn: '',
     }
+    // A record that names the status in progress claims the item, the later
+    // claim winning; one that leaves the status out leaves the claim held.
+    const isWorking = (change.set.status ?? held.status) === 'in_progress'
+    const isClaim = change.set.status === 'in_progress'
 
     byId.set(change.id, {
       ...held,
@@ -228,6 +249,8 @@ const fold = (): BacklogItem[] => {
           ? held.notes
           : [...held.notes, { at: change.at, text: change.note }],
       updatedAt: change.at,
+      workingSince: !isWorking ? 0 : isClaim ? change.at : held.workingSince,
+      workingIn: !isWorking ? '' : isClaim ? change.sessionId : held.workingIn,
     })
   }
 
@@ -239,6 +262,10 @@ const nameOf = (path: string): string =>
 
 const isOpen = (item: BacklogItem): boolean =>
   item.status === 'open' || item.status === 'in_progress'
+
+// Working outranks new: an item in progress is never also marked new.
+const isFresh = (item: BacklogItem, now: number): boolean =>
+  item.status === 'open' && now - item.createdAt < FRESH_MS
 
 const fit = (text: string, width: number): string =>
   text.length > width ? `${text.slice(0, Math.max(1, width - 1))}…` : text
@@ -258,39 +285,112 @@ const token = (length: number): string =>
     .map(byte => ALPHABET.charAt(byte % ALPHABET.length))
     .join('')
 
+// A code block open at some line: the run of ` or ~ that opened it, and the
+// line a piece cut inside it opens it again with, '' when it cannot.
+type Fence = { mark: string; reopen: string }
+
+// The most a piece repeats of a block's opening line. A longer info string is
+// cut short when repeated, and a block whose run alone is longer is cut with
+// no fence lines added, so a piece is at most CHUNK + 402 characters.
+const FENCE_MAX = 200
+
+// The block open after `line`, given the one open before it, by CommonMark's
+// rule: a run of three or more ` or ~ opens a block (a ` run only with no `
+// after it); only a run of the same character, at least as long, with nothing
+// after it but whitespace, closes it. Any indent is taken, as a fence inside a
+// list item has.
+const fenceAfter = (line: string, open?: Fence): Fence | undefined => {
+  const [, run = '', rest = ''] = /^\s*(`{3,}|~{3,})(.*)$/.exec(line) ?? []
+
+  if (open !== undefined) {
+    return run.startsWith(open.mark) && rest.trim() === '' ? undefined : open
+  }
+
+  if (run === '' || (run.startsWith('`') && rest.includes('`'))) {
+    return undefined
+  }
+
+  return {
+    mark: run,
+    reopen:
+      run.length > FENCE_MAX
+        ? ''
+        : `${run}${rest}`.trim().slice(0, FENCE_MAX).trimEnd(),
+  }
+}
+
 // `text` whole, in pieces a Markdown element can draw: cut at the last blank
-// line outside a code fence, or between lines when a piece has none.
+// line outside a code block, or else before a block's opening line, or else
+// between lines. A cut inside a block closes it, and the next piece opens it
+// again, so each piece draws its code as code.
 const chunks = (text: string, limit = CHUNK): string[] => {
   const parts: string[] = []
   let current = ''
   let safe = 0
-  let isFenced = false
-  const flush = (upTo: number) => {
+  // Where in `current` its last line starts when that line opens a block.
+  let opening = -1
+  let fence: Fence | undefined
+  // A block's opening line alone is no piece: the line after it joins it,
+  // though the two come to more than the limit.
+  const isBare = () => opening === 0 && current.length <= FENCE_MAX + 1
+  const cut = (upTo: number) => {
     parts.push(current.slice(0, upTo).trimEnd())
     current = current.slice(upTo)
+    opening -= upTo
     safe = 0
+  }
+  // Ends the piece between lines, closing the block `open` when there is one
+  // to open again.
+  const between = (open?: Fence) => {
+    if (open === undefined || open.reopen === '') {
+      cut(current.length)
+
+      return
+    }
+
+    parts.push(`${current.trimEnd()}\n${open.mark}`)
+    current = `${open.reopen}\n`
+    opening = 0
+    safe = 0
+  }
+  const end = (open?: Fence) => {
+    if (safe > 0) {
+      cut(safe)
+    } else if (opening > 0) {
+      cut(opening)
+    } else {
+      between(open)
+    }
   }
 
   for (const whole of text.split('\n')) {
+    const before = fence
+    fence = fenceAfter(whole, fence)
+
     for (let from = 0; from === 0 || from < whole.length; from += limit) {
       const line = whole.slice(from, from + limit)
+      // Before a line, the block open before it; within a line too long for
+      // one piece, the one open after it.
+      const open = from === 0 ? before : fence
 
-      if (current !== '' && current.length + line.length > limit) {
-        flush(safe > 0 ? safe : current.length)
+      // Twice: what is left after the cut at a blank line can still be too
+      // long.
+      if (current.length + line.length > limit && !isBare()) {
+        end(open)
       }
 
-      if (current !== '' && current.length + line.length > limit) {
-        flush(current.length)
+      if (current.length + line.length > limit && !isBare()) {
+        end(open)
       }
 
+      opening =
+        from === 0 && before === undefined && fence !== undefined
+          ? current.length
+          : -1
       current += `${line}\n`
     }
 
-    if (/^\s*(```|~~~)/.test(whole)) {
-      isFenced = !isFenced
-    }
-
-    if (!isFenced && whole.trim() === '') {
+    if (fence === undefined && whole.trim() === '') {
       safe = current.length
     }
   }
@@ -300,18 +400,41 @@ const chunks = (text: string, limit = CHUNK): string[] => {
   return parts.filter(part => part.trim() !== '')
 }
 
+// The first of these that is set and not empty holds the backlog. With none,
+// there is no backlog: a guess, such as `/.claude`, would be a folder no other
+// session reads.
 const folder = async ($: EngineInterface): Promise<string> => {
-  const config = await $.env.get('CLAUDE_CONFIG_DIR')
+  const places = [
+    [await $.env.get('CLAUDE_CONFIG_DIR'), 'backlog/items'],
+    [await $.env.get('USERPROFILE'), '.claude/backlog/items'],
+    [await $.env.get('HOME'), '.claude/backlog/items'],
+  ] as const
 
-  if (config !== undefined && config !== '') {
-    return `${slash(config)}/backlog/items`
+  for (const [base, under] of places) {
+    if (base !== undefined && base !== '') {
+      return `${slash(base)}/${under}`
+    }
   }
 
-  const home =
-    (await $.env.get('USERPROFILE')) ?? (await $.env.get('HOME')) ?? ''
-
-  return `${slash(home)}/.claude/backlog/items`
+  throw new Error(
+    'no home directory was found: CLAUDE_CONFIG_DIR, USERPROFILE and HOME are all unset or empty',
+  )
 }
+
+// What went wrong, without the `Error:` its text starts with.
+const reason = (error: unknown): string =>
+  String(error).replace(/^\w*Error: /, '')
+
+// Answers a tool call whose hook failed, the folder unreadable or unwritable.
+// Left skipped, the hook would have the engine fail the call as having no
+// implementation, which tells Claude nothing.
+const refuse = (
+  _: unknown,
+  __: unknown,
+  next: { error: { message?: string } },
+) => ({
+  deny: `The backlog could not be read or written: ${reason(next.error.message ?? 'it did not answer in time')}. Nothing was recorded or changed.`,
+})
 
 const load = async (
   $: EngineInterface,
@@ -340,18 +463,49 @@ const place = async ($: EngineInterface): Promise<boolean> => {
   return true
 }
 
+// The ids of the items new as of now, in a stable order.
+const freshOf = async (
+  $: EngineInterface,
+  all: BacklogItem[],
+): Promise<string[]> => {
+  const now = await $.clock.now()
+
+  return all
+    .filter(one => isFresh(one, now))
+    .map(one => one.id)
+    .sort()
+}
+
+// Whether the host already holds `ids` as the new items. Compared with the
+// host, not a copy here: a resumed session loses what it wrote while starting.
+const isFreshLevel = async (
+  $: EngineInterface,
+  ids: string[],
+): Promise<boolean> => (await read($, fresh)).join(' ') === ids.join(' ')
+
 const publish = async ($: EngineInterface): Promise<BacklogItem[]> => {
   const all = fold()
   await update($, items, () => all)
 
+  const ids = await freshOf($, all)
+
+  if (!(await isFreshLevel($, ids))) {
+    await update($, fresh, () => ids)
+  }
+
   const here = await read($, project)
   const open = all.filter(one => isOpen(one) && one.project === here)
+  const working = open.filter(one => one.status === 'in_progress').length
+  const recent = open.filter(one => ids.includes(one.id)).length
   const decisions = open.filter(one => one.category === 'decision').length
-  const toDecide = decisions > 0 ? `, ${decisions} to decide` : ''
+  const counts = [
+    `${open.length} open`,
+    working > 0 ? `${working} in progress` : '',
+    recent > 0 ? `${recent} new` : '',
+    decisions > 0 ? `${decisions} to decide` : '',
+  ].filter(part => part !== '')
 
-  $.ui.status(
-    open.length === 0 ? undefined : `backlog: ${open.length} open${toDecide}`,
-  )
+  $.ui.status(open.length === 0 ? undefined : `backlog: ${counts.join(', ')}`)
 
   return all
 }
@@ -437,6 +591,12 @@ const level = async ($: EngineInterface): Promise<void> => {
   // The host holds the items for the session. A resumed session starts with
   // none, though the records here are level with the folder.
   if (!hasChanged && (await read($, items)).length !== before.size) {
+    hasChanged = true
+  }
+
+  // An item stops being new with no record written: its mark, and the counts,
+  // go on the first poll past its ten minutes.
+  if (!hasChanged && !(await isFreshLevel($, await freshOf($, fold())))) {
     hasChanged = true
   }
 
@@ -739,7 +899,7 @@ export const register: Register = on => {
     await $.tool.register({
       name: 'update',
       description:
-        'Updates one backlog item by id: mark it done with a resolution once fixed or settled, change its priority or category, or append a note with what you learned. Ids come from mcp__backlog__add and mcp__backlog__list.',
+        'Updates one backlog item by id: mark it in_progress when you start work on it, done with a resolution once fixed or settled, change its priority or category, or append a note with what you learned. Ids come from mcp__backlog__add and mcp__backlog__list.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -785,7 +945,7 @@ export const register: Register = on => {
     try {
       await sync($)
     } catch (error) {
-      $.ui.log(`backlog: could not read the backlog folder: ${String(error)}`)
+      $.ui.log(`backlog: could not read the backlog folder: ${reason(error)}`)
     }
 
     $.clock.every(POLL_MS, () => {
@@ -812,13 +972,21 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'backlog' }, async $ => {
-    await sync($)
+    // The pane opens even when the folder cannot be read, and says why it is
+    // empty in place of the count.
+    const failure = await sync($).then(
+      () => '',
+      (error: unknown) => reason(error),
+    )
     const opened = await $.ui.open({ id: PANE, title: 'Backlog', focus: true })
     const here = await read($, project)
     const open = (await read($, items)).filter(
       one => isOpen(one) && one.project === here,
     )
-    const count = `${open.length} open in ${nameOf(here)}`
+    const count =
+      failure === ''
+        ? `${open.length} open in ${nameOf(here)}`
+        : `could not read the backlog folder: ${failure}`
 
     return {
       text: opened.isPlaced
@@ -828,7 +996,11 @@ export const register: Register = on => {
   })
 
   on('tool.call', { tool: 'mcp__backlog__add' }, async ($, e) => {
-    const drafts = Array.isArray(e.items) ? e.items : []
+    if (!Array.isArray(e.items)) {
+      return { result: 'Nothing recorded: `items` must be a list of items.' }
+    }
+
+    const drafts = e.items
 
     if (drafts.length > BATCH_MAX) {
       return {
@@ -845,7 +1017,7 @@ export const register: Register = on => {
     }
 
     return { result: text }
-  })
+  }).catch(refuse)
 
   on('tool.call', { tool: 'mcp__backlog__update' }, async ($, e) => {
     const id = oneLine(e.id, 12)
@@ -881,12 +1053,13 @@ export const register: Register = on => {
           ? `No backlog item has the id "${id}". mcp__backlog__list gives the ids.`
           : `Updated ${edited.id}: ${STATUS[edited.status]}, ${edited.priority} priority.`,
     }
-  })
+  }).catch(refuse)
 
   on('tool.call', { tool: 'mcp__backlog__list' }, async ($, e) => {
     await sync($)
     const all = await read($, items)
     const here = await read($, project)
+    const freshIds = new Set(await read($, fresh))
     const id = oneLine(e.id, 12)
 
     if (id !== '') {
@@ -913,12 +1086,12 @@ export const register: Register = on => {
           : listed
               .map(
                 one =>
-                  `${one.id} [${one.category}, ${one.priority}, ${STATUS[one.status]}] ${one.title}` +
+                  `${one.id} [${one.category}, ${one.priority}, ${STATUS[one.status]}${freshIds.has(one.id) ? ', new' : ''}] ${one.title}` +
                   (e.scope === 'all' ? ` (${nameOf(one.project)})` : ''),
               )
               .join('\n'),
     }
-  })
+  }).catch(refuse)
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const table = $.ui.resolve(e)
@@ -927,6 +1100,7 @@ export const register: Register = on => {
     const all = await read($, items)
     const held = await read($, view)
     const here = await read($, project)
+    const freshIds = new Set(await read($, fresh))
     const columns = Math.max(24, e.props.bodyColumns)
     const selected =
       held.selected === null
@@ -946,6 +1120,9 @@ export const register: Register = on => {
         nameOf(selected.project),
         day(selected.createdAt),
       ].filter(fact => fact !== '')
+      const isWorking = selected.status === 'in_progress'
+      const isHere =
+        isWorking && selected.workingIn === (await $.session.id())
       const close = async (status: BacklogStatus) => {
         await edit($, selected.id, { status })
         await show($, null)
@@ -964,6 +1141,20 @@ export const register: Register = on => {
             <Text dimColor wrap="wrap">
               {facts.join(' · ')}
             </Text>
+            {isWorking && (
+              <Box key="working" flexDirection="row">
+                <Text color={WORKING.color}>{`${WORKING.mark} `}</Text>
+                <Text wrap="wrap">
+                  {`In progress since ${day(selected.workingSince)}, in ${isHere ? 'this' : 'another'} session`}
+                </Text>
+              </Box>
+            )}
+            {freshIds.has(selected.id) && (
+              <Box key="new" flexDirection="row">
+                <Text color={FRESH.color}>{`${FRESH.mark} `}</Text>
+                <Text wrap="wrap">New, added in the last 10 minutes</Text>
+              </Box>
+            )}
             {selected.project !== here && (
               <Text color="warning" wrap="wrap">
                 {`From another project: ${selected.project}`}
@@ -1118,6 +1309,8 @@ export const register: Register = on => {
         (isAll || one.project === here) && (held.showClosed || isOpen(one)),
     )
     const open = shown.filter(isOpen)
+    const working = open.filter(one => one.status === 'in_progress').length
+    const recent = open.filter(one => freshIds.has(one.id)).length
     const decisions = open.filter(one => one.category === 'decision').length
     const groups = CATEGORIES.map(category => ({
       category,
@@ -1126,10 +1319,17 @@ export const register: Register = on => {
 
     return (
       <Box flexDirection="column">
-        <Box flexDirection="row" justifyContent="space-between">
-          <Text bold>{isAll ? 'All projects' : fit(nameOf(here), 30)}</Text>
-          <Text dimColor>
-            {`${open.length} open${decisions > 0 ? `, ${decisions} to decide` : ''}`}
+        <Text bold>{isAll ? 'All projects' : fit(nameOf(here), 30)}</Text>
+        <Box key="counts">
+          <Text dimColor wrap="wrap">
+            {`${open.length} open`}
+            {working > 0 && ', '}
+            {working > 0 && <Text color={WORKING.color}>{WORKING.mark}</Text>}
+            {working > 0 && ` ${working} in progress`}
+            {recent > 0 && ', '}
+            {recent > 0 && <Text color={FRESH.color}>{FRESH.mark}</Text>}
+            {recent > 0 && ` ${recent} new`}
+            {decisions > 0 && `, ${decisions} to decide`}
           </Text>
         </Box>
         <Box flexDirection="row" columnGap={1}>
@@ -1168,14 +1368,27 @@ export const register: Register = on => {
             {group.members.map(one => {
               const origin = isAll ? ` · ${nameOf(one.project)}` : ''
               const label = `${MARK[one.status]}${one.title}${origin}`
+              const badge =
+                one.status === 'in_progress'
+                  ? { ...WORKING, key: `working:${one.id}` }
+                  : freshIds.has(one.id)
+                    ? { ...FRESH, key: `new:${one.id}` }
+                    : undefined
+              // The mark and its space come out of the title's room.
+              const room = columns - 6 - (badge === undefined ? 0 : 2)
 
               return (
                 <Box flexDirection="row">
                   <Text {...tone(one.priority)}>{`${TAG[one.priority]} `}</Text>
+                  {badge !== undefined && (
+                    <Box key={badge.key}>
+                      <Text color={badge.color}>{`${badge.mark} `}</Text>
+                    </Box>
+                  )}
                   <Button
                     plain
                     key={`open:${one.id}`}
-                    label={fit(label, columns - 6)}
+                    label={fit(label, room)}
                     dimColor={!isOpen(one)}
                     onPress={() => show($, one.id)}
                   />
