@@ -64,6 +64,9 @@ const FRESH = { mark: '●', color: 'success' } as const
 const BANDED: readonly RenderSurface[] = ['terminal', 'desktop']
 // An open item is new for this long after it was recorded.
 const FRESH_MS = 10 * 60 * 1000
+const DAY_MS = 24 * 60 * 60 * 1000
+// The note a session leaves on each item it had in progress when it ends.
+const RELEASED = 'Released: the session working on it ended.'
 
 const GUIDANCE = `# Backlog
 
@@ -71,7 +74,7 @@ The person keeps a backlog in a side pane, shared by all their Claude Code sessi
 
 The person reads an item later, away from this conversation, and may act on it from another session. Write its detail to stand alone: what you observed, where (file and line), why it matters. A decision carries its options with their trade-offs and your recommendation.
 
-When you start work on an item that is already on the backlog, call mcp__backlog__update with status "in_progress", so the pane shows it is being worked on. When you fix or settle an item, call mcp__backlog__update with status "done" and a one-line resolution.`
+When you start work on an item that is already on the backlog, call mcp__backlog__update with status "in_progress", so the pane shows it is being worked on. When you fix or settle an item, call mcp__backlog__update with status "done" and a one-line resolution. When you stop work on an item without finishing it, set its status back to "open" with a note saying what is left.`
 
 const items = atom({ plugin: 'backlog', key: 'items' } as const, [])
 const view = atom({ plugin: 'backlog', key: 'view' } as const, {
@@ -81,6 +84,7 @@ const view = atom({ plugin: 'backlog', key: 'view' } as const, {
 })
 const project = atom({ plugin: 'backlog', key: 'project' } as const, '')
 const fresh = atom({ plugin: 'backlog', key: 'fresh' } as const, [])
+const aged = atom({ plugin: 'backlog', key: 'aged' } as const, {})
 
 // File name to the change record last read from it; `stamp` is the listing's
 // time and size, '' for a file this session just wrote.
@@ -89,10 +93,6 @@ const unreadable = new Map<string, string>()
 let hasLoaded = false
 let lastAt = 0
 let queue: Promise<unknown> = Promise.resolve()
-// Where the session draws, as it started. A module variable, not state: a
-// resumed session loses the state it wrote while starting, and a reload runs
-// session.start again, which sets it before anything is published.
-let surface: RenderSurface | null = null
 
 // Reads and writes of the folder run one at a time within this session.
 // Across sessions nothing needs a lock: every write is a new file.
@@ -279,6 +279,16 @@ const isOpen = (item: BacklogItem): boolean =>
 // Working outranks new: an item in progress is never also marked new.
 const isFresh = (item: BacklogItem, now: number): boolean =>
   item.status === 'open' && now - item.createdAt < FRESH_MS
+
+// How many whole days an item has been in progress, 0 under one day. A claim
+// that old may be one a session left behind when it crashed.
+const daysHeld = (item: BacklogItem, now: number): number =>
+  item.status === 'in_progress' && item.workingSince > 0
+    ? Math.max(0, Math.floor((now - item.workingSince) / DAY_MS))
+    : 0
+
+const days = (count: number): string =>
+  `${count} ${count === 1 ? 'day' : 'days'}`
 
 const fit = (text: string, width: number): string =>
   text.length > width ? `${text.slice(0, Math.max(1, width - 1))}…` : text
@@ -496,6 +506,30 @@ const isFreshLevel = async (
   ids: string[],
 ): Promise<boolean> => (await read($, fresh)).join(' ') === ids.join(' ')
 
+// How many whole days each item in progress has been so, by id in a stable
+// order; an item under one day has no entry.
+const agedOf = async (
+  $: EngineInterface,
+  all: BacklogItem[],
+): Promise<Record<string, number>> => {
+  const now = await $.clock.now()
+
+  return Object.fromEntries(
+    all
+      .map(one => [one.id, daysHeld(one, now)] as const)
+      .filter(([, claimed]) => claimed > 0)
+      .sort(([a], [b]) => (a < b ? -1 : 1)),
+  )
+}
+
+// Whether the host already holds `ages`, compared with the host as the new
+// items are.
+const isAgedLevel = async (
+  $: EngineInterface,
+  ages: Record<string, number>,
+): Promise<boolean> =>
+  JSON.stringify(await read($, aged)) === JSON.stringify(ages)
+
 type Counts = {
   open: number
   working: number
@@ -553,6 +587,21 @@ const drawCounts = (Text: ElementConstructor<TextProps>, counts: Counts) => [
   counts.decisions > 0 && `, ${counts.decisions} to decide`,
 ]
 
+// Sets the status line: this project's counts while a surface the session
+// draws on has no band to show them, and nothing while every one has, or
+// nothing is open. The surfaces are read each time, not once at session.start:
+// a phone or an editor attaches to a terminal session, and leaves it. While
+// one is attached the terminal shows the counts twice, in its band and here.
+const flag = async ($: EngineInterface): Promise<void> => {
+  const counts = await countsHere($)
+  const surfaces = await $.session.surfaces()
+  const isBanded =
+    surfaces.length > 0 && surfaces.every(one => BANDED.includes(one))
+
+  // The engine leads the line with the plugin's name.
+  $.ui.status(counts.open === 0 || isBanded ? undefined : spell(counts, false))
+}
+
 const publish = async ($: EngineInterface): Promise<BacklogItem[]> => {
   const all = fold()
   await update($, items, () => all)
@@ -563,14 +612,13 @@ const publish = async ($: EngineInterface): Promise<BacklogItem[]> => {
     await update($, fresh, () => ids)
   }
 
-  const counts = await countsHere($)
-  // Where the band is drawn it shows the counts, and the status line would
-  // repeat them. The engine leads the line with the plugin's name.
-  const isBanded = surface !== null && BANDED.includes(surface)
+  const ages = await agedOf($, all)
 
-  $.ui.status(
-    counts.open === 0 || isBanded ? undefined : spell(counts, false),
-  )
+  if (!(await isAgedLevel($, ages))) {
+    await update($, aged, () => ages)
+  }
+
+  await flag($)
 
   return all
 }
@@ -665,6 +713,11 @@ const level = async ($: EngineInterface): Promise<void> => {
     hasChanged = true
   }
 
+  // A claim's age moves the same way, on the first poll past each whole day.
+  if (!hasChanged && !(await isAgedLevel($, await agedOf($, fold())))) {
+    hasChanged = true
+  }
+
   if (hasChanged) {
     const arrived = (await publish($)).filter(one => !before.has(one.id))
     const first = arrived[0]
@@ -706,7 +759,7 @@ const edit = (
 const add = (
   $: EngineInterface,
   drafts: readonly unknown[],
-): Promise<{ text: string; recorded: number }> =>
+): Promise<{ text: string; recorded: number; hasFailed: boolean }> =>
   inTurn(async () => {
     // Level first: an item another session closed since the last poll is no
     // twin, and one it opened is.
@@ -714,8 +767,38 @@ const add = (
     const here = await read($, project)
     const lines: string[] = []
     let recorded = 0
+    let failure = ''
 
-    for (const draft of drafts) {
+    // Writes one draft's record, and resolves whether the folder took it. The
+    // first write to fail ends the batch: with nothing recorded the call is
+    // refused whole, and otherwise it says what was recorded and what was not.
+    const write = async (
+      index: number,
+      title: string,
+      id: string,
+      set: Partial<BacklogFields>,
+      line: string,
+    ): Promise<boolean> => {
+      try {
+        await append($, id, set)
+      } catch (error) {
+        if (recorded === 0) {
+          throw error
+        }
+
+        const after = drafts.length - index - 1
+        failure = `The backlog could not be written: ${reason(error)}. Not recorded: "${fit(title, 60)}"${after === 0 ? '' : ` and the ${after === 1 ? 'item' : `${after} items`} after it`}. Send ${after === 0 ? 'it' : 'those'} again; what is listed here needs no resending.`
+
+        return false
+      }
+
+      lines.push(`- ${id}: ${line}`)
+      recorded += 1
+
+      return true
+    }
+
+    for (const [index, draft] of drafts.entries()) {
       const fields = record(draft)
       const title = oneLine(fields.title, 200)
 
@@ -770,9 +853,18 @@ const add = (
           refreshed.recommendation = given.recommendation
         }
 
-        await append($, twin.id, refreshed)
-        lines.push(`- ${twin.id}: already on the backlog, refreshed`)
-        recorded += 1
+        const isRefreshed = await write(
+          index,
+          title,
+          twin.id,
+          refreshed,
+          'already on the backlog, refreshed',
+        )
+
+        if (!isRefreshed) {
+          break
+        }
+
         continue
       }
 
@@ -782,23 +874,39 @@ const add = (
         id = token(8)
       }
 
-      await append($, id, {
-        category: 'task',
-        priority: 'medium',
-        detail: '',
-        options: [],
-        recommendation: '',
-        ...given,
+      const isWritten = await write(
+        index,
         title,
-        status: 'open',
-        resolution: '',
-        project: here,
-      })
-      lines.push(`- ${id}: ${title}`)
-      recorded += 1
+        id,
+        {
+          category: 'task',
+          priority: 'medium',
+          detail: '',
+          options: [],
+          recommendation: '',
+          ...given,
+          title,
+          status: 'open',
+          resolution: '',
+          project: here,
+        },
+        title,
+      )
+
+      if (!isWritten) {
+        break
+      }
     }
 
     await publish($)
+
+    if (failure !== '') {
+      return {
+        text: `${failure}\nRecorded before the failure:\n${lines.join('\n')}`,
+        recorded,
+        hasFailed: true,
+      }
+    }
 
     return {
       text:
@@ -806,6 +914,7 @@ const add = (
           ? 'Nothing recorded: `items` was empty.'
           : `Recorded on the backlog:\n${lines.join('\n')}`,
       recorded,
+      hasFailed: false,
     }
   })
 
@@ -831,7 +940,38 @@ const describe = (item: BacklogItem): string =>
     .join('\n\n')
 
 const closing = (item: BacklogItem): string =>
-  `When this is finished, call mcp__backlog__update for ${item.id} with status "done" and a one-line resolution. If it cannot be finished, add a note to the item saying what is in the way.`
+  `When this is finished, call mcp__backlog__update for ${item.id} with status "done" and a one-line resolution. If it cannot be finished, set its status back to "open" with a note saying what is in the way.`
+
+// Changes an item for a press in the pane, and resolves why the folder did
+// not take the change, '' when it did. A press has no caller to refuse.
+const attempt = (
+  $: EngineInterface,
+  id: string,
+  set: Partial<BacklogFields>,
+): Promise<string> =>
+  edit($, id, set).then(
+    () => '',
+    (error: unknown) => fit(reason(error), 80),
+  )
+
+// The same, a failure said in a toast: the item is left as it was, its
+// actions still there to press again. Resolves whether the item changed.
+const change = async (
+  $: EngineInterface,
+  id: string,
+  set: Partial<BacklogFields>,
+): Promise<boolean> => {
+  const failure = await attempt($, id, set)
+
+  if (failure !== '') {
+    $.ui.toast(
+      `Backlog: ${id} was not changed (${failure}). Press the action again.`,
+      { timeoutMs: 10000 },
+    )
+  }
+
+  return failure === ''
+}
 
 // Hands an item to this session's Claude as the person's own prompt. The
 // item changes only once the prompt has entered: one that did not is said so,
@@ -863,13 +1003,23 @@ const send = async (
     return
   }
 
-  await edit(
+  const failure = await attempt(
     $,
     item.id,
     resolution === undefined
       ? { status: 'in_progress' }
       : { status: 'in_progress', resolution },
   )
+
+  if (failure !== '') {
+    $.ui.toast(
+      `Backlog: ${item.id} was sent to Claude, but is not marked in progress (${failure}).`,
+      { timeoutMs: 10000 },
+    )
+
+    return
+  }
+
   $.ui.toast(`Sent to Claude: ${fit(item.title, 60)}`)
 }
 
@@ -965,7 +1115,6 @@ const toggle = async ($: EngineInterface): Promise<void> => {
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
-    surface = e.surface
     await place($)
 
     await $.command.register({
@@ -992,7 +1141,7 @@ export const register: Register = on => {
     await $.tool.register({
       name: 'update',
       description:
-        'Updates one backlog item by id: mark it in_progress when you start work on it, done with a resolution once fixed or settled, change its priority or category, or append a note with what you learned. Ids come from mcp__backlog__add and mcp__backlog__list.',
+        'Updates one backlog item by id: mark it in_progress when you start work on it, done with a resolution once fixed or settled, open again when you stop work on it unfinished, change its priority or category, or append a note with what you learned. Ids come from mcp__backlog__add and mcp__backlog__list.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -1045,6 +1194,51 @@ export const register: Register = on => {
       void sync($).catch(() => undefined)
     })
     void $.ui.open({ id: PANE, title: 'Backlog' })
+
+    return next(e)
+  })
+
+  // A surface that joins or leaves changes where the counts are shown.
+  on('session.attach', async ($, e, next) => {
+    const attached = await next(e)
+    await inTurn(() => flag($))
+
+    return attached
+  })
+
+  on('session.detach', async ($, e, next) => {
+    const detached = await next(e)
+
+    // One that leaves as the session ends leaves no line to set.
+    if (e.reason === 'detach') {
+      await inTurn(() => flag($))
+    }
+
+    return detached
+  })
+
+  // A session that ends is working on nothing: each item it had in progress
+  // goes back to open, with a note saying so. One that crashes writes nothing,
+  // and its claims stand, their age shown, until someone releases them.
+  on('session.end', async ($, e, next) => {
+    try {
+      await inTurn(async () => {
+        await level($)
+        const mine = fold().filter(
+          one => one.status === 'in_progress' && one.workingIn === e.sessionId,
+        )
+
+        for (const one of mine) {
+          await append($, one.id, { status: 'open' }, RELEASED)
+        }
+
+        if (mine.length > 0) {
+          await publish($)
+        }
+      })
+    } catch {
+      // The session ends all the same, its claims left standing.
+    }
 
     return next(e)
   })
@@ -1130,7 +1324,7 @@ export const register: Register = on => {
       }
     }
 
-    const { text, recorded } = await add($, drafts)
+    const { text, recorded, hasFailed } = await add($, drafts)
 
     if (recorded > 0) {
       $.ui.toast(
@@ -1138,7 +1332,7 @@ export const register: Register = on => {
       )
     }
 
-    return { result: text }
+    return hasFailed ? { deny: text } : { result: text }
   }).catch(refuse)
 
   on('tool.call', { tool: 'mcp__backlog__update' }, async ($, e) => {
@@ -1182,6 +1376,7 @@ export const register: Register = on => {
     const all = await read($, items)
     const here = await read($, project)
     const freshIds = new Set(await read($, fresh))
+    const ages = await read($, aged)
     const id = oneLine(e.id, 12)
 
     if (id !== '') {
@@ -1206,11 +1401,14 @@ export const register: Register = on => {
         listed.length === 0
           ? 'The backlog has no matching items.'
           : listed
-              .map(
-                one =>
-                  `${one.id} [${one.category}, ${one.priority}, ${STATUS[one.status]}${freshIds.has(one.id) ? ', new' : ''}] ${one.title}` +
-                  (e.scope === 'all' ? ` (${nameOf(one.project)})` : ''),
-              )
+              .map(one => {
+                const claimed = ages[one.id] ?? 0
+
+                return (
+                  `${one.id} [${one.category}, ${one.priority}, ${STATUS[one.status]}${claimed > 0 ? ` for ${days(claimed)}` : ''}${freshIds.has(one.id) ? ', new' : ''}] ${one.title}` +
+                  (e.scope === 'all' ? ` (${nameOf(one.project)})` : '')
+                )
+              })
               .join('\n'),
     }
   }).catch(refuse)
@@ -1223,6 +1421,7 @@ export const register: Register = on => {
     const held = await read($, view)
     const here = await read($, project)
     const freshIds = new Set(await read($, fresh))
+    const ages = await read($, aged)
     const columns = Math.max(24, e.props.bodyColumns)
     const selected =
       held.selected === null
@@ -1245,9 +1444,11 @@ export const register: Register = on => {
       const isWorking = selected.status === 'in_progress'
       const isHere =
         isWorking && selected.workingIn === (await $.session.id())
+      const claimed = ages[selected.id] ?? 0
       const close = async (status: BacklogStatus) => {
-        await edit($, selected.id, { status })
-        await show($, null)
+        if (await change($, selected.id, { status })) {
+          await show($, null)
+        }
       }
 
       return (
@@ -1267,7 +1468,7 @@ export const register: Register = on => {
               <Box key="working" flexDirection="row">
                 <Text color={WORKING.color}>{`${WORKING.mark} `}</Text>
                 <Text wrap="wrap">
-                  {`In progress since ${day(selected.workingSince)}, in ${isHere ? 'this' : 'another'} session`}
+                  {`In progress since ${day(selected.workingSince)}${claimed > 0 ? ` (${days(claimed)})` : ''}, in ${isHere ? 'this' : 'another'} session`}
                 </Text>
               </Box>
             )}
@@ -1399,25 +1600,32 @@ export const register: Register = on => {
                 onPress={() => close('dismissed')}
               />
             )}
+            {isWorking && (
+              <Button
+                key="release"
+                label="Release"
+                onPress={() => change($, selected.id, { status: 'open' })}
+              />
+            )}
             {!isLive && (
               <Button
                 key="reopen"
                 label="Reopen"
-                onPress={() => edit($, selected.id, { status: 'open' })}
+                onPress={() => change($, selected.id, { status: 'open' })}
               />
             )}
             {raised !== undefined && (
               <Button
                 key="raise"
                 label="Priority +"
-                onPress={() => edit($, selected.id, { priority: raised })}
+                onPress={() => change($, selected.id, { priority: raised })}
               />
             )}
             {lowered !== undefined && (
               <Button
                 key="lower"
                 label="Priority -"
-                onPress={() => edit($, selected.id, { priority: lowered })}
+                onPress={() => change($, selected.id, { priority: lowered })}
               />
             )}
           </Box>
@@ -1486,8 +1694,14 @@ export const register: Register = on => {
                   : freshIds.has(one.id)
                     ? { ...FRESH, key: `new:${one.id}` }
                     : undefined
-              // The mark and its space come out of the title's room.
-              const room = columns - 6 - (badge === undefined ? 0 : 2)
+              // A claim a day old or more says its age, `3d`: the session
+              // that made it may be gone.
+              const claimed = ages[one.id] ?? 0
+              const age = claimed > 0 ? `${claimed}d ` : ''
+              // The mark and its space, and the age, come out of the title's
+              // room.
+              const room =
+                columns - 6 - (badge === undefined ? 0 : 2) - age.length
 
               return (
                 <Box flexDirection="row">
@@ -1495,6 +1709,11 @@ export const register: Register = on => {
                   {badge !== undefined && (
                     <Box key={badge.key}>
                       <Text color={badge.color}>{`${badge.mark} `}</Text>
+                    </Box>
+                  )}
+                  {age !== '' && (
+                    <Box key={`age:${one.id}`}>
+                      <Text dimColor>{age}</Text>
                     </Box>
                   )}
                   <Button

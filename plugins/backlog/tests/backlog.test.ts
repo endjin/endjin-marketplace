@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { ElementQuery, Engine, FoundElement } from 'claude-code/testing'
-import type { On, UiPane } from 'claude-code'
+import type { On, RenderSurface, UiPane } from 'claude-code'
 
 const DIR = '/home/t/.claude/backlog/items'
 const PANE = {
@@ -36,13 +36,15 @@ const posix = (path: string) =>
 
 // What a world is like beyond its defaults: the environment the session sees
 // (HOME alone unless given), whether the folder is there before anything is
-// written to it, why the host does not place the pane, when it does not, and
-// why a hook refuses to close it, when one does.
+// written to it, why the host does not place the pane, when it does not, why
+// a hook refuses to close it, when one does, and the surfaces the session
+// draws on as it starts (the terminal alone unless given).
 type Setting = {
   env?: Record<string, string>
   hasFolder?: boolean
   notPlaced?: string
   closeRefused?: string
+  surfaces?: RenderSurface[]
 }
 
 // The world beneath the mod: a folder in memory, a session rooted at `root`,
@@ -76,6 +78,15 @@ const world = (
   let here = root
   // How many of the next listings fail.
   let failing = 0
+  // How many of the next writes the folder takes before it refuses the ones
+  // after them, and how many of those it refuses.
+  let spared = 0
+  let refusing = 0
+  // The clients attached to the session, the terminal's own first.
+  const roster = (setting.surfaces ?? ['terminal']).map((surface, index) => ({
+    surface,
+    clientId: `start-${index}`,
+  }))
 
   on('fs.exists', ($, e) => ({
     value:
@@ -121,6 +132,14 @@ const world = (
     return { value: text }
   })
   on('fs.write', ($, e) => {
+    if (spared > 0) {
+      spared -= 1
+    } else if (refusing > 0) {
+      refusing -= 1
+
+      return { deny: 'ENOSPC: no space left on device' }
+    }
+
     if (files.has(posix(e.path))) {
       overwritten.push(posix(e.path))
     }
@@ -133,6 +152,23 @@ const world = (
   on('session.root', () => ({ value: here }))
   on('session.id', () => ({ value: 'session-1' }))
   on('session.start', ($, e) => ({ cwd: e.cwd }))
+  on('session.end', ($, e) => ({ sessionId: e.sessionId }))
+  on('session.surfaces', () => ({
+    value: [...new Set(roster.map(client => client.surface))],
+  }))
+  on('session.attach', ($, e) => {
+    roster.push({ surface: e.surface, clientId: e.clientId })
+
+    return { clientId: e.clientId }
+  })
+  on('session.detach', ($, e) => {
+    roster.splice(
+      roster.findIndex(client => client.clientId === e.clientId),
+      1,
+    )
+
+    return { clientId: e.clientId }
+  })
   on('command.register', ($, e) => ({ value: { command: e.name } }))
   on('tool.register', ($, e) => ({
     value: { tool: `mcp__backlog__${e.name}` },
@@ -262,6 +298,11 @@ const world = (
     },
     failListing: (times: number) => {
       failing = times
+    },
+    // The folder takes the next `after` writes, then refuses `times` of them.
+    refuseWrites: (times: number, after = 0) => {
+      spared = after
+      refusing = times
     },
   }
 }
@@ -2644,7 +2685,9 @@ test('a title too long for its row is cut to fit with an ellipsis, and shown who
 
 for (const surface of ['terminal', 'desktop'] as const) {
   test(`the band on the ${surface} shows backlog: and this project's counts, and follows them`, async ($, on) => {
-    const { clock, ids } = world(on)
+    const { clock, ids } = world(on, '/work/app', 'enter', {
+      surfaces: [surface],
+    })
     await $.session.start({ ...start, surface })
     await call($, 'add', { items: [DEFECT, DECISION] })
     const [defect, decision] = ids()
@@ -2671,7 +2714,9 @@ for (const surface of ['terminal', 'desktop'] as const) {
 
 for (const surface of ['terminal', 'desktop'] as const) {
   test(`on the ${surface}, where the band is drawn, the status line is never set to the counts`, async ($, on) => {
-    const { statuses, ids } = world(on)
+    const { statuses, ids } = world(on, '/work/app', 'enter', {
+      surfaces: [surface],
+    })
     await $.session.start({ ...start, surface })
     await call($, 'add', { items: [DEFECT] })
     await call($, 'update', { id: ids()[0], status: 'in_progress' })
@@ -2683,7 +2728,9 @@ for (const surface of ['terminal', 'desktop'] as const) {
 }
 
 test('with no band the status line shows the counts, unprefixed, and clears when nothing is open', async ($, on) => {
-  const { statuses, ids } = world(on)
+  const { statuses, ids } = world(on, '/work/app', 'enter', {
+    surfaces: ['vscode'],
+  })
   await $.session.start({ ...start, surface: 'vscode' })
   expect(statuses).toEqual([undefined])
 
@@ -2821,4 +2868,417 @@ test('pressing backlog: opens the pane while the folder cannot be read', async (
   expect(opened.at(-1)).toEqual({ id: 'backlog', focus: true })
   expect(toasts).toHaveLength(toastsBefore)
   await bar.unmount()
+})
+
+// A phone, as it joins and leaves the session.
+const phone = (clientId: string) => ({ surface: 'mobile', clientId }) as const
+
+test('a surface with no band that joins a terminal session is given the counts on the status line, until the last one leaves', async ($, on) => {
+  const { statuses, ids } = world(on)
+  await $.session.start(start)
+  await call($, 'add', { items: [DEFECT, DECISION] })
+  expect(statuses.filter(text => text !== undefined)).toEqual([])
+
+  await $.session.attach(phone('phone-1'))
+  expect(statuses.at(-1)).toBe('2 open, 2 new, 1 to decide')
+
+  // The line follows the counts, and the terminal keeps its band.
+  const bar = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await call($, 'update', { id: ids()[0], status: 'in_progress' })
+  expect(statuses.at(-1)).toBe('2 open, 1 in progress, 1 new, 1 to decide')
+  expect(await band(bar)).toBe('2 open, » 1 in progress, ● 1 new, 1 to decide')
+  await bar.unmount()
+
+  // Two phones are one surface: the line stays until both have left.
+  await $.session.attach(phone('phone-2'))
+  await $.session.detach({ ...phone('phone-1'), reason: 'detach' })
+  expect(statuses.at(-1)).toBe('2 open, 1 in progress, 1 new, 1 to decide')
+
+  await $.session.detach({ ...phone('phone-2'), reason: 'detach' })
+  expect(statuses.at(-1)).toBeUndefined()
+})
+
+test('a desktop that joins a terminal session leaves the status line clear, and VS Code beside them sets it', async ($, on) => {
+  const { statuses } = world(on)
+  await $.session.start(start)
+  await call($, 'add', { items: [DEFECT] })
+
+  await $.session.attach({ surface: 'desktop', clientId: 'desk-1' })
+  expect(statuses.filter(text => text !== undefined)).toEqual([])
+
+  await $.session.attach({ surface: 'vscode', clientId: 'code-1' })
+  expect(statuses.at(-1)).toBe('1 open, 1 new')
+})
+
+test('a client that leaves as the session ends sets no status line', async ($, on) => {
+  const { statuses } = world(on)
+  await $.session.start(start)
+  await call($, 'add', { items: [DEFECT] })
+  await $.session.attach(phone('phone-1'))
+  const set = statuses.length
+
+  await $.session.detach({ ...phone('phone-1'), reason: 'end' })
+  expect(statuses).toHaveLength(set)
+})
+
+test('a session that draws nowhere is given the counts on the status line', async ($, on) => {
+  const { statuses } = world(on, '/work/app', 'enter', { surfaces: [] })
+  await $.session.start({ ...start, surface: null, isInteractive: false })
+  await call($, 'add', { items: [DEFECT] })
+
+  expect(statuses.at(-1)).toBe('1 open, 1 new')
+})
+
+// Five drafts, titled One to Five.
+const FIVE = ['One', 'Two', 'Three', 'Four', 'Five'].map(title => ({
+  ...DEFECT,
+  title,
+}))
+
+test('a batch the folder refuses part way through says what was recorded and what was not, and sending it again completes it', async ($, on) => {
+  const { toasts, ids, refuseWrites } = world(on)
+  await $.session.start(start)
+
+  refuseWrites(1, 2)
+  const partial = await call($, 'add', { items: FIVE })
+
+  const [one, two] = ids()
+  expect(ids()).toHaveLength(2)
+  expect(partial.result).toBeUndefined()
+
+  const [said, ...listed] = String(partial.deny).split('\n')
+  expect(said).toMatch(
+    /^The backlog could not be written: .*ENOSPC: no space left on device\. Not recorded: "Three" and the 2 items after it\. Send those again; what is listed here needs no resending\.$/,
+  )
+  expect(listed).toEqual([
+    'Recorded before the failure:',
+    `- ${one}: One`,
+    `- ${two}: Two`,
+  ])
+  expect(toasts).toEqual(['Backlog: 2 items recorded'])
+
+  // What was recorded is on the backlog at once, not on the next poll.
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await rows(ui)).toEqual(['Two', 'One'])
+  await ui.unmount()
+
+  const again = await call($, 'add', { items: FIVE })
+  const [, , three, four, five] = ids()
+  expect(String(again.result)).toBe(
+    [
+      'Recorded on the backlog:',
+      `- ${one}: already on the backlog, refreshed`,
+      `- ${two}: already on the backlog, refreshed`,
+      `- ${three}: Three`,
+      `- ${four}: Four`,
+      `- ${five}: Five`,
+    ].join('\n'),
+  )
+  expect(ids()).toHaveLength(5)
+})
+
+test('a batch whose last write the folder refuses names the one item to send again', async ($, on) => {
+  const { ids, refuseWrites } = world(on)
+  await $.session.start(start)
+
+  refuseWrites(1, 1)
+  const partial = await call($, 'add', {
+    items: [{ ...DEFECT, title: '' }, ...FIVE.slice(0, 2)],
+  })
+
+  expect(String(partial.deny).split('\n')).toEqual([
+    expect.stringMatching(
+      /^The backlog could not be written: .*ENOSPC.*\. Not recorded: "Two"\. Send it again; what is listed here needs no resending\.$/,
+    ),
+    'Recorded before the failure:',
+    '- skipped an item with no title',
+    `- ${ids()[0]}: One`,
+  ])
+})
+
+test('a batch whose first write the folder refuses is refused whole, and truly records nothing', async ($, on) => {
+  const { files, toasts, refuseWrites } = world(on)
+  await $.session.start(start)
+
+  for (const items of [FIVE, [{ ...DEFECT, title: '' }, ...FIVE]]) {
+    refuseWrites(1)
+    const refused = await call($, 'add', { items })
+
+    expect(refused.deny).toMatch(
+      /^The backlog could not be read or written: .*ENOSPC: no space left on device\. Nothing was recorded or changed\.$/,
+    )
+    refuseWrites(0)
+  }
+
+  expect(files.size).toBe(0)
+  expect(toasts).toEqual([])
+})
+
+test('a pane action the folder refuses is said in a toast, the item and the view left as they were, and pressed again it is taken', async ($, on) => {
+  const { toasts, ids, refuseWrites, failListing } = world(on)
+  await $.session.start(start)
+  await call($, 'add', { items: [DEFECT] })
+  const id = ids()[0] ?? ''
+  const notChanged = new RegExp(
+    `^Backlog: ${id} was not changed \\(.+\\)\\. Press the action again\\.$`,
+  )
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await ui.press({ key: `open:${id}` })
+
+  // Refused where it is written, and where it is read first.
+  for (const [key, fail] of [
+    ['done', () => refuseWrites(1)],
+    ['dismiss', () => failListing(1)],
+    ['raise', () => refuseWrites(1)],
+    ['lower', () => failListing(1)],
+  ] as const) {
+    fail()
+    const before = toasts.length
+    await ui.press({ key })
+
+    expect(toasts.slice(before)).toHaveLength(1)
+    expect(toasts.at(-1)).toMatch(notChanged)
+    expect(await full($, id)).toMatch('(defect, high priority, open)')
+    expect(await ui.find({ key: 'back' })).toBeDefined()
+  }
+
+  const said = toasts.length
+  await ui.press({ key: 'raise' })
+  expect(await full($, id)).toMatch('(defect, critical priority, open)')
+  await ui.press({ key: 'done' })
+  expect(await full($, id)).toMatch('(defect, critical priority, done)')
+  expect(await ui.find({ key: 'back' })).toBeUndefined()
+  expect(toasts).toHaveLength(said)
+
+  // Reopen and Release say it the same way.
+  await ui.press({ key: 'closed' })
+  await ui.press({ key: `open:${id}` })
+  refuseWrites(1)
+  await ui.press({ key: 'reopen' })
+  expect(toasts.at(-1)).toMatch(notChanged)
+  expect(await full($, id)).toMatch('(defect, critical priority, done)')
+
+  await call($, 'update', { id, status: 'in_progress' })
+  refuseWrites(1)
+  await ui.press({ key: 'release' })
+  expect(toasts.at(-1)).toMatch(notChanged)
+  expect(toasts).toHaveLength(said + 2)
+  expect(await full($, id)).toMatch('(defect, critical priority, in progress)')
+  await ui.unmount()
+})
+
+test('an item sent to Claude that the folder then refuses to mark is said to be sent and not marked', async ($, on) => {
+  const { prompts, toasts, ids, refuseWrites } = world(on)
+  await $.session.start(start)
+  await call($, 'add', { items: [DEFECT] })
+  const id = ids()[0] ?? ''
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await ui.press({ key: `open:${id}` })
+  refuseWrites(1)
+  await ui.press({ key: 'fix' })
+
+  expect(prompts).toHaveLength(1)
+  expect(toasts.at(-1)).toMatch(
+    new RegExp(
+      `^Backlog: ${id} was sent to Claude, but is not marked in progress \\(.+\\)\\.$`,
+    ),
+  )
+  expect(toasts.some(toast => toast.startsWith('Sent to Claude'))).toBe(false)
+  expect(await full($, id)).toMatch('(defect, high priority, open)')
+  await ui.unmount()
+})
+
+// The session ending, as the person leaving it.
+const ended = {
+  reason: 'prompt_input_exit',
+  sessionId: 'session-1',
+  resume: { id: 'session-1' },
+} as const
+
+test('a session that ends gives back the items it had in progress, with a note, and leaves the rest alone', async ($, on) => {
+  const { clock, ids, elsewhere, filesOf } = world(on)
+  await $.session.start(start)
+  await call($, 'add', {
+    items: [DEFECT, DECISION, { ...DEFECT, title: 'Taken over elsewhere' }],
+  })
+  const [defect, decision, taken] = ids()
+  await call($, 'update', { id: defect, status: 'in_progress' })
+  await call($, 'update', { id: taken, status: 'in_progress' })
+
+  // Another session takes one of them over, and has an item of its own, the
+  // second claimed since this session last polled.
+  await clock.advance(1000)
+  elsewhere({ id: taken ?? '', set: { status: 'in_progress' } })
+  elsewhere({
+    id: 'ww11ww11',
+    set: { ...recorded('Logs leak tokens'), status: 'in_progress' },
+  })
+
+  const bar = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await $.session.end(ended)).toEqual({ sessionId: 'session-1' })
+
+  expect(await full($, defect ?? '')).toBe(
+    [
+      `Backlog item ${defect} (defect, high priority, open): Retry loop never backs off`,
+      'Recorded in /work/app.',
+      'src/retry.ts:40 retries at once, forever.',
+      'Note, 2023-11-14: Released: the session working on it ended.',
+    ].join('\n\n'),
+  )
+  expect(await band(bar)).toBe('4 open, » 2 in progress, ● 2 new, 1 to decide')
+  await bar.unmount()
+
+  for (const other of [taken ?? '', 'ww11ww11']) {
+    expect(await full($, other)).toMatch('priority, in progress)')
+    expect(await full($, other)).not.toMatch('Released')
+  }
+
+  // An item it never took up has no record more.
+  expect(filesOf(decision ?? '')).toHaveLength(1)
+})
+
+test('a session that ends while the folder cannot be read or written ends all the same, its claims standing', async ($, on) => {
+  const { ids, refuseWrites, failListing } = world(on)
+  await $.session.start(start)
+  await call($, 'add', { items: [DEFECT] })
+  const id = ids()[0] ?? ''
+  await call($, 'update', { id, status: 'in_progress' })
+
+  for (const fail of [() => refuseWrites(1), () => failListing(1)]) {
+    fail()
+    expect(await $.session.end(ended)).toEqual({ sessionId: 'session-1' })
+    expect(await full($, id)).toMatch('(defect, high priority, in progress)')
+    expect(await full($, id)).not.toMatch('Released')
+  }
+})
+
+test("a claim a day old or more says its age in the list, the detail view and Claude's listing, and Release gives the item back", async ($, on) => {
+  const { clock, elsewhere } = world(on)
+  await $.session.start(start)
+  const long = `Stale and ${'long '.repeat(12)}title`
+  const now = clock.now()
+
+  // One claimed three days and a second ago, one seven seconds short of a day.
+  elsewhere({ id: 'st11st11', at: now - 4 * DAY, set: recorded(long) })
+  elsewhere({
+    id: 'st11st11',
+    at: now - 3 * DAY - 1000,
+    set: { status: 'in_progress' },
+  })
+  elsewhere({
+    id: 'yo11yo11',
+    at: now - 2 * DAY,
+    set: { ...recorded('Claimed nearly a day ago'), priority: 'high' },
+  })
+  elsewhere({
+    id: 'yo11yo11',
+    at: now - DAY + 7000,
+    set: { status: 'in_progress' },
+  })
+  await clock.advance(5000)
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect((await ui.find({ key: 'age:st11st11' }))?.text).toBe('3d ')
+  expect(await ui.find({ key: 'age:yo11yo11' })).toBeUndefined()
+  expect(String((await call($, 'list', {})).result)).toBe(
+    [
+      'yo11yo11 [issue, high, in progress] Claimed nearly a day ago',
+      `st11st11 [issue, low, in progress for 3 days] ${long}`,
+    ].join('\n'),
+  )
+
+  // The age comes out of the title's room: tag, mark, age, title.
+  const row = (await ui.find({ key: 'open:st11st11' }))?.text ?? ''
+  expect(row).toHaveLength(PANE.props.bodyColumns - 6 - 2 - 3)
+  expect(row.endsWith('…')).toBe(true)
+
+  // The first poll past the whole day gives the second its age.
+  await clock.advance(5000)
+  expect((await ui.find({ key: 'age:yo11yo11' }))?.text).toBe('1d ')
+  expect(String((await call($, 'list', {})).result)).toMatch(
+    'yo11yo11 [issue, high, in progress for 1 day] Claimed nearly a day ago',
+  )
+
+  await ui.press({ key: 'open:yo11yo11' })
+  expect((await ui.find({ key: 'working' }))?.text).toBe(
+    '» In progress since 2023-11-13 (1 day), in another session',
+  )
+  await ui.press({ key: 'back' })
+
+  await ui.press({ key: 'open:st11st11' })
+  expect((await ui.find({ key: 'working' }))?.text).toBe(
+    '» In progress since 2023-11-11 (3 days), in another session',
+  )
+  expect(await actions(ui)).toEqual([
+    'back',
+    'fix',
+    'done',
+    'dismiss',
+    'release',
+    'raise',
+  ])
+  expect((await ui.find({ key: 'release' }))?.text).toBe('Release')
+
+  await ui.press({ key: 'release' })
+  expect(await ui.find({ key: 'working' })).toBeUndefined()
+  expect(await ui.find({ key: 'release' })).toBeUndefined()
+  expect(await ui.find({ key: 'fix' })).toBeDefined()
+  expect(await full($, 'st11st11')).toMatch('(issue, low priority, open)')
+
+  await ui.press({ key: 'back' })
+  expect(await markOf(ui, 'st11st11')).toBe('none')
+  expect(await ui.find({ key: 'age:st11st11' })).toBeUndefined()
+  expect(await counts(ui)).toBe('2 open, » 1 in progress')
+  await ui.unmount()
+})
+
+test('an item that is open, or in progress for under a day, offers no age, and only one in progress offers Release', async ($, on) => {
+  const { ids } = world(on)
+  await $.session.start(start)
+  await call($, 'add', { items: [DEFECT] })
+  const id = ids()[0] ?? ''
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await ui.press({ key: `open:${id}` })
+  expect(await ui.find({ key: 'release' })).toBeUndefined()
+
+  await ui.press({ key: 'fix' })
+  expect((await ui.find({ key: 'working' }))?.text).toBe(
+    '» In progress since 2023-11-14, in this session',
+  )
+  expect(await ui.find({ key: 'release' })).toBeDefined()
+  await ui.press({ key: 'back' })
+  expect(await ui.find({ key: `age:${id}` })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('Claude is told to give an item back when it stops work on it unfinished', async ($, on) => {
+  const { prompts, ids } = world(on)
+  on('prompt.compose', () => ({ sections: [] }))
+  await $.session.start(start)
+
+  const composed = await $.prompt.compose({
+    model: 'claude-test',
+    promptModel: 'claude-test',
+    surfaces: ['terminal'],
+    tools: ['mcp__backlog__add'],
+    outputStyle: null,
+    traits: [],
+  })
+  expect(
+    composed.sections.find(one => one.id === 'backlog:tracking')?.text,
+  ).toMatch(
+    'When you stop work on an item without finishing it, set its status back to "open" with a note saying what is left.',
+  )
+
+  await call($, 'add', { items: [DEFECT] })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await ui.press({ key: `open:${ids()[0] ?? ''}` })
+  await ui.press({ key: 'fix' })
+  expect(prompts[0]).toMatch(
+    'If it cannot be finished, set its status back to "open" with a note saying what is in the way.',
+  )
+  await ui.unmount()
 })

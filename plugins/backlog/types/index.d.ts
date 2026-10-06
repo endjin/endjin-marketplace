@@ -86,6 +86,12 @@ declare module 'claude-code' {
        * minutes. Held here so the pane redraws when one ages out.
        */
       fresh: string[]
+      /**
+       * How many whole days each item in progress has been so, by id; an item
+       * under one day has no entry. Held here so the pane redraws as a claim
+       * ages.
+       */
+      aged: Record<string, number>
     }
   }
 }

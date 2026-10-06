@@ -14,10 +14,10 @@ by priority, with a detail view where you decide, direct or dismiss each one.
 | `/backlog` | Opens and focuses the pane |
 | Backlog pane | Open items grouped as Decisions, Defects, Issues and Tasks, each sorted critical to low |
 | Detail view | The item's full context, Claude's recommendation, its options, and the actions below |
-| Row above the prompt | `backlog: 4 open, » 1 in progress, ● 2 new, 1 to decide` for the current project, on the terminal and desktop, while it has open items; press `backlog:` to open or close the pane. VS Code and mobile show the counts on a plain status line instead |
+| Row above the prompt | `backlog: 4 open, » 1 in progress, ● 2 new, 1 to decide` for the current project, on the terminal and desktop, while it has open items; press `backlog:` to open or close the pane. VS Code and mobile show the counts on a plain status line instead, also when they attach to a terminal session |
 | `mcp__backlog__add` | Claude records one or more items; an open item with the same title is refreshed, not duplicated |
 | `mcp__backlog__update` | Claude marks an item in progress or done, re-prioritises it, or appends a note |
-| `mcp__backlog__list` | Claude lists the backlog, or reads one item in full; new items are flagged `new` |
+| `mcp__backlog__list` | Claude lists the backlog, or reads one item in full; new items are flagged `new`, and an item in progress for a day or more says for how long |
 
 A short system-prompt section tells Claude to record what a piece of work leaves behind, to
 write each item so it stands alone, to mark an item in progress when it starts work on it, and
@@ -40,8 +40,31 @@ The pane header counts what the list shows, and its marks are the legend:
 `3 open, » 1 in progress, ● 2 new, 1 to decide`. The row above the prompt gives the same counts,
 with the same marks, for the current project, whatever the pane shows; VS Code and mobile have no
 such row, so their status line gives the counts without the marks. The row gives way to a survey,
-and is not drawn while the project has nothing open. The detail view of an item in progress says since when, and whether this
-session or another one is working on it; the later session to take it up is the one shown.
+and is not drawn while the project has nothing open.
+
+A session can draw on several surfaces at once. The status line is set while any of them has no
+row, so a phone or VS Code that attaches to a terminal session gets the counts as well, until the
+last such surface leaves. One status line serves the whole session, so while one is attached the
+terminal shows the counts twice: in its row and on its status line.
+
+The detail view of an item in progress says since when, and whether this session or another one
+is working on it; the later session to take it up is the one shown.
+
+## When work on an item stops
+
+An item in progress goes back to open in three ways, so a `»` does not outlive the work:
+
+- **The session ends.** A session that exits, is cleared or is replaced by a resumed one gives
+  back every item it has in progress, each with the note
+  `Released: the session working on it ended.` Items another session has since taken up are left
+  alone.
+- **Claude stops.** Claude is told to set an item back to open, with a note saying what is left,
+  when it stops work on it without finishing.
+- **You release it.** A session that crashes writes nothing, so its items stay in progress. An
+  item in progress for a day or more says so: `3d` before its title in the list,
+  `In progress since 2026-10-03 (3 days)` in its detail view, and `in progress for 3 days` when
+  Claude lists the backlog. **Release** in the detail view sets it back to open. The age moves on
+  the first five-second poll past each whole day.
 
 ## Acting on an item
 
@@ -51,10 +74,16 @@ Open an item in the pane, then:
 - **Fix now** on a defect, issue or task.
 - Type into **Direct** to tell Claude what to do about it in your own words.
 - **Mark done**, **Dismiss**, **Reopen**, or change its priority.
+- **Release** an item in progress, to set it back to open.
 
 Deciding, directing and fixing each send the item to the session whose pane you pressed the
 button in, as a prompt that runs once that session is idle. The item is marked in progress, and
-Claude is asked to mark it done with a one-line resolution when it finishes.
+Claude is asked to mark it done with a one-line resolution when it finishes, or to set it back to
+open with a note when it cannot.
+
+An action the backlog folder does not take, because it cannot be read or written, changes
+nothing and says why in a toast; press it again once the folder is back. When an item was sent to
+Claude but could not be marked in progress, the toast says that instead.
 
 ## One backlog across sessions
 
@@ -63,6 +92,9 @@ when that is set). Every session with the plugin enabled reads and writes that f
 it every five seconds, and shows a toast when another session adds an item. When none of
 `CLAUDE_CONFIG_DIR`, `USERPROFILE` and `HOME` is set, an empty value counting as unset, there is
 no folder: the session logs why, and Claude's calls are refused, saying nothing was recorded.
+The same refusal answers a call when the folder cannot be read or written. An `add` of several
+items that fails part way through is refused differently: it lists the items recorded before the
+failure and names the ones to send again.
 
 Each change to an item is a small JSON file of its own, named `<id>.<time>.<token>.json`, that
 says which fields it sets and which note it appends. A file is written once and never rewritten.
