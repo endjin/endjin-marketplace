@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { ElementQuery, Engine, FoundElement } from 'claude-code/testing'
-import type { On } from 'claude-code'
+import type { On, UiPane } from 'claude-code'
 
 const DIR = '/home/t/.claude/backlog/items'
 const PANE = {
@@ -16,6 +16,18 @@ const PANE = {
     view: {},
   },
 } as const
+const BAND = {
+  plugin: 'backlog',
+  component: 'AbovePrompt',
+  props: {
+    hasSurvey: false,
+    isWorking: false,
+    maxRows: 10,
+    bodyColumns: 80,
+    scroll: { offset: 0, bodyRows: 10 },
+    view: {},
+  },
+} as const
 
 // The host hands a hook the path as this machine spells it (`C:\home\t` on
 // Windows): the folder in memory is keyed by the POSIX spelling.
@@ -24,11 +36,13 @@ const posix = (path: string) =>
 
 // What a world is like beyond its defaults: the environment the session sees
 // (HOME alone unless given), whether the folder is there before anything is
-// written to it, and why the host does not place the pane, when it does not.
+// written to it, why the host does not place the pane, when it does not, and
+// why a hook refuses to close it, when one does.
 type Setting = {
   env?: Record<string, string>
   hasFolder?: boolean
   notPlaced?: string
+  closeRefused?: string
 }
 
 // The world beneath the mod: a folder in memory, a session rooted at `root`,
@@ -53,6 +67,9 @@ const world = (
   const statuses: (string | undefined)[] = []
   const logs: string[] = []
   const opened: { id: string; focus?: boolean }[] = []
+  const closed: string[] = []
+  // The pane as the host holds it, undefined while it is not open.
+  let pane: UiPane | undefined
   const clock = mock.clock(on, { now: 1_700_000_000_000 })
   mock.env(on, setting.env ?? { HOME: '/home/t' })
   // The session's root as the host answers it now: `/cd` moves it.
@@ -122,6 +139,14 @@ const world = (
   }))
   on('ui.open', ($, e) => {
     opened.push({ id: e.id, focus: e.focus })
+    // An open raises the pane in front of any other.
+    pane = {
+      id: e.id,
+      title: e.title ?? e.id,
+      isShown: true,
+      isFocused: e.focus === true,
+      isPlaced: setting.notPlaced === undefined,
+    }
 
     return {
       value:
@@ -130,6 +155,21 @@ const world = (
           : { isPlaced: false as const, reason: setting.notPlaced },
     }
   })
+  on('ui.panes', () => ({ value: pane === undefined ? [] : [pane] }))
+  on('ui.close', ($, e) => {
+    if (setting.closeRefused !== undefined) {
+      return { deny: setting.closeRefused }
+    }
+
+    closed.push(e.id)
+    pane = undefined
+
+    return { value: undefined }
+  })
+  // What the band shows when the mod draws nothing of its own there.
+  on('ui.render', { component: 'AbovePrompt' }, ($, e) =>
+    $.ui.resolve(e).Box({ key: 'beneath' }),
+  )
   on('ui.log', ($, e) => {
     logs.push(e.text)
 
@@ -205,11 +245,18 @@ const world = (
     statuses,
     logs,
     opened,
+    closed,
     clock,
     ids,
     elsewhere,
     put,
     filesOf,
+    // The pane as the host holds it now, and how the person then moves it:
+    // behind another pane's tab, or waiting unplaced.
+    pane: () => pane,
+    seat: (state: Partial<UiPane>) => {
+      pane = pane === undefined ? undefined : { ...pane, ...state }
+    },
     cd: (path: string) => {
       here = path
     },
@@ -231,6 +278,14 @@ const call = ($: Engine, tool: string, args: Record<string, unknown>) =>
 
 // The pane header's counts, as drawn.
 const counts = async (ui: Drawing) => (await ui.find({ key: 'counts' }))?.text
+
+// The band's counts, as drawn; undefined when the mod draws none there.
+const band = async (ui: Drawing) => (await ui.find({ key: 'band' }))?.text
+
+// Whether the band shows what is beneath the mod, the mod drawing nothing.
+const yields = async (ui: Drawing) =>
+  (await ui.find({ key: 'beneath' })) !== undefined &&
+  (await ui.find({ key: 'toggle' })) === undefined
 
 type Drawing = {
   find: (query: ElementQuery) => Promise<FoundElement | undefined>
@@ -587,12 +642,13 @@ test('the detail view draws the whole of a long detail', async ($, on) => {
   await ui.unmount()
 })
 
-test('an item sent to Claude is marked in progress, not new, in the list, the header and the status line', async ($, on) => {
-  const { statuses, ids } = world(on)
+test('an item sent to Claude is marked in progress, not new, in the list, the header and the band', async ($, on) => {
+  const { ids } = world(on)
   await $.session.start(start)
   await call($, 'add', { items: [DEFECT] })
   const id = ids()[0] ?? ''
-  expect(statuses.at(-1)).toBe('backlog: 1 open, 1 new')
+  const bar = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await band(bar)).toBe('1 open, ● 1 new')
 
   const sender = await $.ui.mount({ ...PANE, surface: 'terminal' })
   expect(await markOf(sender, id)).toBe('new')
@@ -601,7 +657,8 @@ test('an item sent to Claude is marked in progress, not new, in the list, the he
   await sender.press({ key: 'back' })
   await sender.unmount()
 
-  expect(statuses.at(-1)).toBe('backlog: 1 open, 1 in progress')
+  expect(await band(bar)).toBe('1 open, » 1 in progress')
+  await bar.unmount()
 
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
@@ -613,7 +670,7 @@ test('an item sent to Claude is marked in progress, not new, in the list, the he
 })
 
 test('an item is new for ten minutes from when it was recorded, and the poll that ends them takes the mark away', async ($, on) => {
-  const { statuses, toasts, clock, elsewhere } = world(on)
+  const { toasts, clock, elsewhere } = world(on)
   await $.session.start(start)
   const recorded = clock.now()
   elsewhere({
@@ -631,6 +688,10 @@ test('an item is new for ten minutes from when it was recorded, and the poll tha
 
   const terminal = await $.ui.mount({ ...PANE, surface: 'terminal' })
   const desktop = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const bars = [
+    await $.ui.mount({ ...BAND, surface: 'terminal' }),
+    await $.ui.mount({ ...BAND, surface: 'desktop' }),
+  ]
 
   // The last poll before the ten minutes are up.
   await clock.advance(recorded + 10 * MINUTE - 5000 - clock.now())
@@ -640,7 +701,9 @@ test('an item is new for ten minutes from when it was recorded, and the poll tha
     expect(await counts(ui)).toBe('1 open, ● 1 new')
   }
 
-  expect(statuses.at(-1)).toBe('backlog: 1 open, 1 new')
+  for (const bar of bars) {
+    expect(await band(bar)).toBe('1 open, ● 1 new')
+  }
 
   // The poll at ten minutes to the millisecond: no longer new.
   await clock.advance(5000)
@@ -652,7 +715,11 @@ test('an item is new for ten minutes from when it was recorded, and the poll tha
     await ui.unmount()
   }
 
-  expect(statuses.at(-1)).toBe('backlog: 1 open')
+  for (const bar of bars) {
+    expect(await band(bar)).toBe('1 open')
+    await bar.unmount()
+  }
+
   // Aging is not an arrival.
   expect(toasts).toHaveLength(1)
 })
@@ -1479,7 +1546,7 @@ test('a blank direction sends nothing and changes nothing', async ($, on) => {
 })
 
 test('Mark done and Dismiss close an item and go back to the list, and Show closed lists closed items after the open ones', async ($, on) => {
-  const { statuses, ids } = world(on)
+  const { ids } = world(on)
   await $.session.start(start)
   await call($, 'add', {
     items: [
@@ -1489,19 +1556,21 @@ test('Mark done and Dismiss close an item and go back to the list, and Show clos
     ],
   })
   const [a, b] = ids()
-  expect(statuses.at(-1)).toBe('backlog: 3 open, 3 new')
+  const bar = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await band(bar)).toBe('3 open, ● 3 new')
 
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   await ui.press({ key: `open:${a}` })
   await ui.press({ key: 'done' })
   expect(await ui.find({ key: 'back' })).toBeUndefined()
   expect(await rows(ui)).toEqual(['B, medium', 'C, low'])
-  expect(statuses.at(-1)).toBe('backlog: 2 open, 2 new')
+  expect(await band(bar)).toBe('2 open, ● 2 new')
 
   await ui.press({ key: `open:${b}` })
   await ui.press({ key: 'dismiss' })
   expect(await rows(ui)).toEqual(['C, low'])
-  expect(statuses.at(-1)).toBe('backlog: 1 open, 1 new')
+  expect(await band(bar)).toBe('1 open, ● 1 new')
+  await bar.unmount()
   expect(await full($, a ?? '')).toMatch('(defect, high priority, done)')
   expect(await full($, b ?? '')).toMatch('(defect, medium priority, dismissed)')
   await ui.unmount()
@@ -1796,12 +1865,13 @@ test('with no home directory the session starts and says why once, and Claude is
 })
 
 test('a session starts with no backlog folder yet, and the first add makes it', async ($, on) => {
-  const { files, statuses } = world(on, '/work/app', 'enter', {
+  const { files } = world(on, '/work/app', 'enter', {
     hasFolder: false,
   })
   await $.session.start(start)
 
-  expect(statuses).toEqual([undefined])
+  const bar = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await yields(bar)).toBe(true)
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   expect(await counts(ui)).toBe('0 open')
   expect(await ui.find({ type: 'Text', text: /^Nothing open\./ })).toBeDefined()
@@ -1811,8 +1881,9 @@ test('a session starts with no backlog folder yet, and the first add makes it', 
   expect([...files.keys()].every(path => path.startsWith(`${DIR}/`))).toBe(true)
   expect(files.size).toBe(1)
   expect(await rows(ui)).toEqual(['Retry loop never backs off'])
-  expect(statuses.at(-1)).toBe('backlog: 1 open, 1 new')
+  expect(await band(bar)).toBe('1 open, ● 1 new')
   await ui.unmount()
+  await bar.unmount()
 })
 
 test('entries of the folder that are not change records are passed over, and read once only', async ($, on) => {
@@ -1908,20 +1979,23 @@ test('a half-written record is passed over until it is complete, then read', asy
 })
 
 test('a record deleted from the folder by hand is gone on the next poll, without a toast', async ($, on) => {
-  const { files, statuses, toasts, clock, ids, filesOf } = world(on)
+  const { files, toasts, clock, ids, filesOf } = world(on)
   await $.session.start(start)
   await call($, 'add', { items: [DEFECT] })
   const id = ids()[0] ?? ''
   await call($, 'update', { id, priority: 'low' })
   await clock.advance(5000)
+  const bar = await $.ui.mount({ ...BAND, surface: 'terminal' })
 
   files.delete(filesOf(id)[1] ?? '')
   await clock.advance(5000)
   expect(await full($, id)).toMatch('(defect, high priority, open)')
+  expect(await band(bar)).toBe('1 open, ● 1 new')
 
   files.delete(filesOf(id)[0] ?? '')
   await clock.advance(5000)
-  expect(statuses.at(-1)).toBeUndefined()
+  expect(await yields(bar)).toBe(true)
+  await bar.unmount()
   expect(String((await call($, 'list', { includeClosed: true })).result)).toBe(
     'The backlog has no matching items.',
   )
@@ -2097,14 +2171,15 @@ test("another session's new items are announced in a toast, and nothing else is"
   expect(toasts).toHaveLength(3)
 })
 
-test('when the session moves to another project root, the pane, the status line and new items follow it', async ($, on) => {
-  const { statuses, clock, ids, elsewhere, cd } = world(on)
+test('when the session moves to another project root, the pane, the band and new items follow it', async ($, on) => {
+  const { clock, ids, elsewhere, cd } = world(on)
   await $.session.start(start)
   await call($, 'add', { items: [DEFECT] })
   elsewhere({
     id: 'ap11ap11',
     set: {
       ...recorded('Rate limit is undocumented', '/work/api'),
+      status: 'in_progress',
       priority: 'high',
     },
   })
@@ -2113,13 +2188,17 @@ test('when the session moves to another project root, the pane, the status line 
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   expect(await ui.find({ type: 'Text', text: 'app' })).toBeDefined()
   expect(await rows(ui)).toEqual(['Retry loop never backs off'])
+  // The item in progress in api is not counted in app.
+  const bar = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await band(bar)).toBe('1 open, ● 1 new')
 
   cd('/work/api')
   await clock.advance(5000)
 
   expect(await ui.find({ type: 'Text', text: 'api' })).toBeDefined()
   expect(await rows(ui)).toEqual(['Rate limit is undocumented'])
-  expect(statuses.at(-1)).toBe('backlog: 1 open, 1 new')
+  expect(await band(bar)).toBe('1 open, » 1 in progress')
+  await bar.unmount()
 
   await call($, 'add', {
     items: [{ ...DEFECT, title: 'Document the rate limit' }],
@@ -2561,4 +2640,185 @@ test('a title too long for its row is cut to fit with an ellipsis, and shown who
     await ui.press({ key: 'closed' })
     await ui.unmount()
   }
+})
+
+for (const surface of ['terminal', 'desktop'] as const) {
+  test(`the band on the ${surface} shows backlog: and this project's counts, and follows them`, async ($, on) => {
+    const { clock, ids } = world(on)
+    await $.session.start({ ...start, surface })
+    await call($, 'add', { items: [DEFECT, DECISION] })
+    const [defect, decision] = ids()
+    const bar = await $.ui.mount({ ...BAND, surface })
+    expect((await bar.find({ key: 'toggle' }))?.text).toBe('backlog:')
+    expect(await band(bar)).toBe('2 open, ● 2 new, 1 to decide')
+
+    const ui = await $.ui.mount({ ...PANE, surface })
+    await ui.press({ key: `open:${defect}` })
+    await ui.press({ key: 'fix' })
+    await ui.unmount()
+    expect(await band(bar)).toBe('2 open, » 1 in progress, ● 1 new, 1 to decide')
+
+    // The first poll past ten minutes ends the new mark.
+    await clock.advance(10 * MINUTE + 5000)
+    expect(await band(bar)).toBe('2 open, » 1 in progress, 1 to decide')
+
+    await call($, 'update', { id: defect, status: 'done', resolution: 'Fixed.' })
+    await call($, 'update', { id: decision, status: 'dismissed' })
+    expect(await yields(bar)).toBe(true)
+    await bar.unmount()
+  })
+}
+
+for (const surface of ['terminal', 'desktop'] as const) {
+  test(`on the ${surface}, where the band is drawn, the status line is never set to the counts`, async ($, on) => {
+    const { statuses, ids } = world(on)
+    await $.session.start({ ...start, surface })
+    await call($, 'add', { items: [DEFECT] })
+    await call($, 'update', { id: ids()[0], status: 'in_progress' })
+
+    // Cleared on each change, and never set.
+    expect(statuses.length).toBeGreaterThan(2)
+    expect(statuses.filter(text => text !== undefined)).toEqual([])
+  })
+}
+
+test('with no band the status line shows the counts, unprefixed, and clears when nothing is open', async ($, on) => {
+  const { statuses, ids } = world(on)
+  await $.session.start({ ...start, surface: 'vscode' })
+  expect(statuses).toEqual([undefined])
+
+  await call($, 'add', { items: [DEFECT, DECISION] })
+  expect(statuses.at(-1)).toBe('2 open, 2 new, 1 to decide')
+
+  const [defect, decision] = ids()
+  await call($, 'update', { id: defect, status: 'in_progress' })
+  expect(statuses.at(-1)).toBe('2 open, 1 in progress, 1 new, 1 to decide')
+
+  await call($, 'update', { id: defect, status: 'done', resolution: 'Fixed.' })
+  await call($, 'update', { id: decision, status: 'dismissed' })
+  expect(statuses.at(-1)).toBeUndefined()
+})
+
+test('the band draws nothing of its own with nothing open in this project', async ($, on) => {
+  const { clock, elsewhere } = world(on)
+  await $.session.start(start)
+  const bar = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(await yields(bar)).toBe(true)
+
+  elsewhere({ id: 'ap11ap11', set: recorded('Rate limit is undocumented', '/work/api') })
+  await clock.advance(5000)
+  expect(await yields(bar)).toBe(true)
+  await bar.unmount()
+})
+
+test('the band draws nothing of its own while a survey holds it', async ($, on) => {
+  world(on)
+  await $.session.start(start)
+  await call($, 'add', { items: [DEFECT] })
+
+  const bar = await $.ui.mount({
+    ...BAND,
+    surface: 'terminal',
+    props: { ...BAND.props, hasSurvey: true },
+  })
+  expect(await yields(bar)).toBe(true)
+  await bar.unmount()
+})
+
+test('counts too wide for the band are cut to one row', async ($, on) => {
+  world(on)
+  await $.session.start(start)
+  await call($, 'add', { items: [DEFECT, DECISION] })
+
+  const bar = await $.ui.mount({
+    ...BAND,
+    surface: 'terminal',
+    props: { ...BAND.props, bodyColumns: 30 },
+  })
+  expect(await band(bar)).toBe('2 open, ● 2 new, 1 t…')
+  await bar.unmount()
+})
+
+test('pressing backlog: closes the pane when it is shown, and opens it with focus when it is not', async ($, on) => {
+  const { opened, closed, pane } = world(on)
+  await $.session.start(start)
+  await call($, 'add', { items: [DEFECT] })
+  const bar = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  expect(pane()?.isShown).toBe(true)
+
+  await bar.press({ key: 'toggle' })
+  expect(closed).toEqual(['backlog'])
+  expect(pane()).toBeUndefined()
+
+  await bar.press({ key: 'toggle' })
+  expect(opened.at(-1)).toEqual({ id: 'backlog', focus: true })
+  expect(pane()?.isShown).toBe(true)
+
+  await bar.press({ key: 'toggle' })
+  expect(closed).toEqual(['backlog', 'backlog'])
+  await bar.unmount()
+})
+
+test('pressing backlog: raises the pane when it is a tab behind another, or waits unplaced', async ($, on) => {
+  const { opened, closed, seat } = world(on)
+  await $.session.start(start)
+  await call($, 'add', { items: [DEFECT] })
+  const bar = await $.ui.mount({ ...BAND, surface: 'terminal' })
+
+  for (const state of [{ isShown: false }, { isPlaced: false }]) {
+    seat(state)
+    const before = opened.length
+    await bar.press({ key: 'toggle' })
+    expect(opened.slice(before)).toEqual([{ id: 'backlog', focus: true }])
+  }
+
+  expect(closed).toEqual([])
+  await bar.unmount()
+})
+
+test('pressing backlog: says why when the host does not place the pane', async ($, on) => {
+  const { toasts, opened } = world(on, '/work/app', 'enter', {
+    notPlaced: 'the terminal is too narrow',
+  })
+  await $.session.start(start)
+  await call($, 'add', { items: [DEFECT] })
+  const bar = await $.ui.mount({ ...BAND, surface: 'terminal' })
+
+  await bar.press({ key: 'toggle' })
+  expect(opened.at(-1)).toEqual({ id: 'backlog', focus: true })
+  expect(toasts.at(-1)).toBe(
+    'Backlog: the pane is not shown: the terminal is too narrow',
+  )
+  await bar.unmount()
+})
+
+test('pressing backlog: when a hook keeps the pane open says so, and the press settles', async ($, on) => {
+  const { toasts, closed, pane } = world(on, '/work/app', 'enter', {
+    closeRefused: 'a review is open in it',
+  })
+  await $.session.start(start)
+  await call($, 'add', { items: [DEFECT] })
+  const bar = await $.ui.mount({ ...BAND, surface: 'terminal' })
+
+  await bar.press({ key: 'toggle' })
+  expect(closed).toEqual([])
+  expect(pane()?.isShown).toBe(true)
+  expect(toasts.at(-1)).toBe('Backlog: the pane stays open: a review is open in it')
+  await bar.unmount()
+})
+
+test('pressing backlog: opens the pane while the folder cannot be read', async ($, on) => {
+  const { opened, toasts, ids, failListing } = world(on)
+  await $.session.start(start)
+  await call($, 'add', { items: [DEFECT] })
+  await call($, 'update', { id: ids()[0], status: 'in_progress' })
+  const bar = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await bar.press({ key: 'toggle' })
+  const toastsBefore = toasts.length
+
+  failListing(1)
+  await bar.press({ key: 'toggle' })
+  expect(opened.at(-1)).toEqual({ id: 'backlog', focus: true })
+  expect(toasts).toHaveLength(toastsBefore)
+  await bar.unmount()
 })

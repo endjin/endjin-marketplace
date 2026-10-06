@@ -1,5 +1,11 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register } from 'claude-code'
+import type {
+  ElementConstructor,
+  EngineInterface,
+  Register,
+  RenderSurface,
+  TextProps,
+} from 'claude-code'
 
 import type {
   BacklogCategory,
@@ -53,6 +59,9 @@ const MARK: Record<BacklogStatus, string> = {
 // glyph carries the meaning; the colour only adds to it.
 const WORKING = { mark: '»', color: 'suggestion' } as const
 const FRESH = { mark: '●', color: 'success' } as const
+// The surfaces that raise the band above the prompt, where the counts are
+// drawn in place of the status line.
+const BANDED: readonly RenderSurface[] = ['terminal', 'desktop']
 // An open item is new for this long after it was recorded.
 const FRESH_MS = 10 * 60 * 1000
 
@@ -80,6 +89,10 @@ const unreadable = new Map<string, string>()
 let hasLoaded = false
 let lastAt = 0
 let queue: Promise<unknown> = Promise.resolve()
+// Where the session draws, as it started. A module variable, not state: a
+// resumed session loses the state it wrote while starting, and a reload runs
+// session.start again, which sets it before anything is published.
+let surface: RenderSurface | null = null
 
 // Reads and writes of the folder run one at a time within this session.
 // Across sessions nothing needs a lock: every write is a new file.
@@ -483,6 +496,63 @@ const isFreshLevel = async (
   ids: string[],
 ): Promise<boolean> => (await read($, fresh)).join(' ') === ids.join(' ')
 
+type Counts = {
+  open: number
+  working: number
+  recent: number
+  decisions: number
+}
+
+// How many of `open` there are, and of them in progress, new and to decide.
+const tally = (open: BacklogItem[], freshIds: readonly string[]): Counts => ({
+  open: open.length,
+  working: open.filter(one => one.status === 'in_progress').length,
+  recent: open.filter(one => freshIds.includes(one.id)).length,
+  decisions: open.filter(one => one.category === 'decision').length,
+})
+
+// This project's open items counted, as the host holds them now. Read while
+// drawing, it redraws the drawing when they change.
+const countsHere = async ($: EngineInterface): Promise<Counts> => {
+  const here = await read($, project)
+  const freshIds = await read($, fresh)
+  const all = await read($, items)
+
+  return tally(
+    all.filter(one => isOpen(one) && one.project === here),
+    freshIds,
+  )
+}
+
+// The counts as one line, `4 open, 1 in progress, 2 new, 1 to decide`; with
+// `isMarked`, the in progress and new parts led by their marks.
+const spell = (counts: Counts, isMarked: boolean): string =>
+  [
+    `${counts.open} open`,
+    counts.working > 0
+      ? `${isMarked ? `${WORKING.mark} ` : ''}${counts.working} in progress`
+      : '',
+    counts.recent > 0
+      ? `${isMarked ? `${FRESH.mark} ` : ''}${counts.recent} new`
+      : '',
+    counts.decisions > 0 ? `${counts.decisions} to decide` : '',
+  ]
+    .filter(part => part !== '')
+    .join(', ')
+
+// The counts as the pane's header and the band draw them: `spell` with its
+// marks, each mark in its colour.
+const drawCounts = (Text: ElementConstructor<TextProps>, counts: Counts) => [
+  `${counts.open} open`,
+  counts.working > 0 && ', ',
+  counts.working > 0 && <Text color={WORKING.color}>{WORKING.mark}</Text>,
+  counts.working > 0 && ` ${counts.working} in progress`,
+  counts.recent > 0 && ', ',
+  counts.recent > 0 && <Text color={FRESH.color}>{FRESH.mark}</Text>,
+  counts.recent > 0 && ` ${counts.recent} new`,
+  counts.decisions > 0 && `, ${counts.decisions} to decide`,
+]
+
 const publish = async ($: EngineInterface): Promise<BacklogItem[]> => {
   const all = fold()
   await update($, items, () => all)
@@ -493,19 +563,14 @@ const publish = async ($: EngineInterface): Promise<BacklogItem[]> => {
     await update($, fresh, () => ids)
   }
 
-  const here = await read($, project)
-  const open = all.filter(one => isOpen(one) && one.project === here)
-  const working = open.filter(one => one.status === 'in_progress').length
-  const recent = open.filter(one => ids.includes(one.id)).length
-  const decisions = open.filter(one => one.category === 'decision').length
-  const counts = [
-    `${open.length} open`,
-    working > 0 ? `${working} in progress` : '',
-    recent > 0 ? `${recent} new` : '',
-    decisions > 0 ? `${decisions} to decide` : '',
-  ].filter(part => part !== '')
+  const counts = await countsHere($)
+  // Where the band is drawn it shows the counts, and the status line would
+  // repeat them. The engine leads the line with the plugin's name.
+  const isBanded = surface !== null && BANDED.includes(surface)
 
-  $.ui.status(open.length === 0 ? undefined : `backlog: ${counts.join(', ')}`)
+  $.ui.status(
+    counts.open === 0 || isBanded ? undefined : spell(counts, false),
+  )
 
   return all
 }
@@ -871,8 +936,36 @@ const ITEM_SCHEMA = {
   required: ['title', 'category', 'priority', 'detail'],
 }
 
+// Closes the pane when it is shown, and opens it otherwise: not open, waiting
+// unplaced, or a tab behind another pane. A press is the person asking, so the
+// open places it at any width.
+const toggle = async ($: EngineInterface): Promise<void> => {
+  const pane = (await $.ui.panes()).find(one => one.id === PANE)
+
+  if (pane !== undefined && pane.isShown && pane.isPlaced) {
+    try {
+      await $.ui.close({ id: PANE })
+    } catch (error) {
+      // The engine leads the hook's reason with who called what.
+      const why = reason(error).replace(/^.*\$\.ui\.close: /, '')
+      $.ui.toast(`Backlog: the pane stays open: ${why}`)
+    }
+
+    return
+  }
+
+  // The pane opens even when the folder cannot be read; the poll catches up.
+  await sync($).catch(() => undefined)
+  const opened = await $.ui.open({ id: PANE, title: 'Backlog', focus: true })
+
+  if (!opened.isPlaced) {
+    $.ui.toast(`Backlog: the pane is not shown: ${opened.reason}`)
+  }
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
+    surface = e.surface
     await place($)
 
     await $.command.register({
@@ -993,6 +1086,35 @@ export const register: Register = on => {
         ? `Backlog pane opened: ${count}.`
         : `Backlog: ${count}. The pane is not shown: ${opened.reason}.`,
     }
+  })
+
+  // One row above the prompt where the surface raises the band: `backlog:`,
+  // which opens and closes the pane, and this project's counts.
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    const counts = await countsHere($)
+
+    // The band is shared with the engine's surveys and other plugins.
+    if (e.props.hasSurvey || counts.open === 0) {
+      return next(e)
+    }
+
+    const { Box, Button, Text } = $.ui.resolve(e)
+    const label = 'backlog:'
+    // One row, never wrapped: counts too wide for what the label leaves are
+    // cut, their marks then plain.
+    const room = Math.max(1, e.props.bodyColumns - label.length - 1)
+    const line = spell(counts, true)
+
+    return (
+      <Box flexDirection="row" columnGap={1}>
+        <Button key="toggle" label={label} plain onPress={() => toggle($)} />
+        <Box key="band">
+          <Text dimColor>
+            {line.length > room ? fit(line, room) : drawCounts(Text, counts)}
+          </Text>
+        </Box>
+      </Box>
+    )
   })
 
   on('tool.call', { tool: 'mcp__backlog__add' }, async ($, e) => {
@@ -1308,10 +1430,7 @@ export const register: Register = on => {
       one =>
         (isAll || one.project === here) && (held.showClosed || isOpen(one)),
     )
-    const open = shown.filter(isOpen)
-    const working = open.filter(one => one.status === 'in_progress').length
-    const recent = open.filter(one => freshIds.has(one.id)).length
-    const decisions = open.filter(one => one.category === 'decision').length
+    const counts = tally(shown.filter(isOpen), [...freshIds])
     const groups = CATEGORIES.map(category => ({
       category,
       members: shown.filter(one => one.category === category).sort(byUrgency),
@@ -1322,14 +1441,7 @@ export const register: Register = on => {
         <Text bold>{isAll ? 'All projects' : fit(nameOf(here), 30)}</Text>
         <Box key="counts">
           <Text dimColor wrap="wrap">
-            {`${open.length} open`}
-            {working > 0 && ', '}
-            {working > 0 && <Text color={WORKING.color}>{WORKING.mark}</Text>}
-            {working > 0 && ` ${working} in progress`}
-            {recent > 0 && ', '}
-            {recent > 0 && <Text color={FRESH.color}>{FRESH.mark}</Text>}
-            {recent > 0 && ` ${recent} new`}
-            {decisions > 0 && `, ${decisions} to decide`}
+            {drawCounts(Text, counts)}
           </Text>
         </Box>
         <Box flexDirection="row" columnGap={1}>

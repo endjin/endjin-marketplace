@@ -14,7 +14,7 @@ by priority, with a detail view where you decide, direct or dismiss each one.
 | `/backlog` | Opens and focuses the pane |
 | Backlog pane | Open items grouped as Decisions, Defects, Issues and Tasks, each sorted critical to low |
 | Detail view | The item's full context, Claude's recommendation, its options, and the actions below |
-| Status line | `backlog: 4 open, 1 in progress, 2 new, 1 to decide` for the current project |
+| Row above the prompt | `backlog: 4 open, » 1 in progress, ● 2 new, 1 to decide` for the current project, on the terminal and desktop, while it has open items; press `backlog:` to open or close the pane. VS Code and mobile show the counts on a plain status line instead |
 | `mcp__backlog__add` | Claude records one or more items; an open item with the same title is refreshed, not duplicated |
 | `mcp__backlog__update` | Claude marks an item in progress or done, re-prioritises it, or appends a note |
 | `mcp__backlog__list` | Claude lists the backlog, or reads one item in full; new items are flagged `new` |
@@ -37,8 +37,10 @@ poll after its 10 minutes are up. Reopening an item ends its in-progress mark, a
 it new again unless it was recorded in the last 10 minutes.
 
 The pane header counts what the list shows, and its marks are the legend:
-`3 open, » 1 in progress, ● 2 new, 1 to decide`. The status line gives the same counts for the
-current project. The detail view of an item in progress says since when, and whether this
+`3 open, » 1 in progress, ● 2 new, 1 to decide`. The row above the prompt gives the same counts,
+with the same marks, for the current project, whatever the pane shows; VS Code and mobile have no
+such row, so their status line gives the counts without the marks. The row gives way to a survey,
+and is not drawn while the project has nothing open. The detail view of an item in progress says since when, and whether this
 session or another one is working on it; the later session to take it up is the one shown.
 
 ## Acting on an item
@@ -104,4 +106,4 @@ Loading it with `--plugin-dir` makes the engine write its type declarations into
 | --- | --- |
 | `hooks/register.tsx` | The hooks module: tools, command, system-prompt section, storage and the pane |
 | `types/index.d.ts` | The item and change-record shapes, and the `$.state` contract |
-| `tests/backlog.test.ts` | Behaviour tests over an in-memory folder, on the terminal, desktop and mobile surfaces |
+| `tests/backlog.test.ts` | Behaviour tests over an in-memory folder, on the terminal, desktop, VS Code and mobile surfaces |
