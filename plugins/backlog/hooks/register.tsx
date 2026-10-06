@@ -21,8 +21,11 @@ import type {
 const PANE = 'backlog'
 const POLL_MS = 5000
 const BATCH_MAX = 50
+const TITLE_MAX = 200
+const OPTIONS_MAX = 9
 const DETAIL_MAX = 20000
 const NOTE_MAX = 10000
+const RESOLUTION_MAX = 2000
 // A Markdown element draws at most 10,000 characters: longer text is drawn as
 // several, cut at paragraph breaks.
 const CHUNK = 9000
@@ -127,7 +130,10 @@ const slash = (path: string): string =>
 // whitespace: `/work/my  app` and `/work/my app` are two projects.
 const toPath = (path: string): string => slash(clean(path, 1000))
 
-const toOptions = (raw: unknown): BacklogOption[] =>
+// The options `raw` gives that have a label, the first `most` of them. A
+// record read from the folder is held to the limit; a draft is counted whole,
+// and refused when over it.
+const toOptions = (raw: unknown, most = OPTIONS_MAX): BacklogOption[] =>
   (Array.isArray(raw) ? raw : [])
     .map(one => {
       const fields = typeof one === 'string' ? { label: one } : record(one)
@@ -138,13 +144,13 @@ const toOptions = (raw: unknown): BacklogOption[] =>
       }
     })
     .filter(option => option.label !== '')
-    .slice(0, 9)
+    .slice(0, most)
 
 // The fields `raw` names, each held to its shape; one it leaves out, or names
 // with a value of the wrong kind, is left out.
 const toFields = (raw: Record<string, unknown>): Partial<BacklogFields> => {
   const set: Partial<BacklogFields> = {}
-  const title = oneLine(raw.title, 200)
+  const title = oneLine(raw.title, TITLE_MAX)
   const category = CATEGORIES.find(one => one === raw.category)
   const priority = PRIORITIES.find(one => one === raw.priority)
   const status = STATUSES.find(one => one === raw.status)
@@ -174,11 +180,11 @@ const toFields = (raw: Record<string, unknown>): Partial<BacklogFields> => {
   }
 
   if (typeof raw.recommendation === 'string') {
-    set.recommendation = clean(raw.recommendation, 2000)
+    set.recommendation = clean(raw.recommendation, RESOLUTION_MAX)
   }
 
   if (typeof raw.resolution === 'string') {
-    set.resolution = clean(raw.resolution, 2000)
+    set.resolution = clean(raw.resolution, RESOLUTION_MAX)
   }
 
   if (typeof raw.project === 'string') {
@@ -800,10 +806,28 @@ const add = (
 
     for (const [index, draft] of drafts.entries()) {
       const fields = record(draft)
-      const title = oneLine(fields.title, 200)
+      // Whole, not cut to the limit: two long titles alike in their first
+      // 200 characters are two items, and cut would be recorded as one.
+      const title = oneLine(fields.title, Infinity)
 
       if (title === '') {
         lines.push('- skipped an item with no title')
+        continue
+      }
+
+      if (title.length > TITLE_MAX) {
+        lines.push(
+          `- skipped "${fit(title, 60)}": its title is ${title.length} characters and the limit is ${TITLE_MAX}`,
+        )
+        continue
+      }
+
+      const offered = toOptions(fields.options, Infinity).length
+
+      if (offered > OPTIONS_MAX) {
+        lines.push(
+          `- skipped "${fit(title, 60)}": it has ${offered} options and the limit is ${OPTIONS_MAX}`,
+        )
         continue
       }
 
@@ -836,6 +860,14 @@ const add = (
         // Only what the draft gives: the twin's status, resolution and notes
         // are not this call's to set.
         const refreshed: Partial<BacklogFields> = {}
+        // The draft is Claude's reading of the item now, and its options
+        // belong to that reading: a defect given options is a decision.
+        const isMoved =
+          given.category !== undefined && given.category !== twin.category
+
+        if (given.category !== undefined) {
+          refreshed.category = given.category
+        }
 
         if (given.priority !== undefined) {
           refreshed.priority = given.priority
@@ -858,7 +890,9 @@ const add = (
           title,
           twin.id,
           refreshed,
-          'already on the backlog, refreshed',
+          isMoved
+            ? `already on the backlog, refreshed, and moved from ${twin.category} to ${given.category}`
+            : 'already on the backlog, refreshed',
         )
 
         if (!isRefreshed) {
@@ -1045,6 +1079,7 @@ const ITEM_SCHEMA = {
   properties: {
     title: {
       type: 'string',
+      maxLength: TITLE_MAX,
       description:
         'One line naming the item, specific enough to tell it from its neighbours in a list.',
     },
@@ -1063,7 +1098,7 @@ const ITEM_SCHEMA = {
     },
     options: {
       type: 'array',
-      maxItems: 9,
+      maxItems: OPTIONS_MAX,
       description:
         'For a decision: the choices the person picks from, at most nine.',
       items: {
@@ -1124,7 +1159,7 @@ export const register: Register = on => {
     })
     await $.tool.register({
       name: 'add',
-      description: `Records items on the person's backlog pane: defects found, issues noticed, follow-up tasks, and decisions that need the person. Call it when a piece of work ends and leaves any of these, as well as mentioning them in the reply, and when you reach a choice that is the person's to make. One call takes up to ${BATCH_MAX} items. An open item with the same title in this project is refreshed, not duplicated.`,
+      description: `Records items on the person's backlog pane: defects found, issues noticed, follow-up tasks, and decisions that need the person. Call it when a piece of work ends and leaves any of these, as well as mentioning them in the reply, and when you reach a choice that is the person's to make. One call takes up to ${BATCH_MAX} items. An open item with the same title in this project is refreshed, not duplicated: it takes the category, priority, detail, options and recommendation given.`,
       inputSchema: {
         type: 'object',
         properties: {
@@ -1149,7 +1184,7 @@ export const register: Register = on => {
           status: { type: 'string', enum: STATUSES },
           priority: { type: 'string', enum: PRIORITIES },
           category: { type: 'string', enum: CATEGORIES },
-          title: { type: 'string' },
+          title: { type: 'string', maxLength: TITLE_MAX },
           note: {
             type: 'string',
             maxLength: NOTE_MAX,
@@ -1344,8 +1379,16 @@ export const register: Register = on => {
       }
     }
 
+    const title = oneLine(e.title, Infinity)
+
+    if (title.length > TITLE_MAX) {
+      return {
+        deny: `The title is ${title.length} characters and the limit is ${TITLE_MAX}. Nothing was changed: shorten it.`,
+      }
+    }
+
     const note = clean(e.note, NOTE_MAX)
-    const resolution = clean(e.resolution, 2000)
+    const resolution = clean(e.resolution, RESOLUTION_MAX)
     const set = toFields({
       title: e.title,
       status: e.status,
@@ -1557,7 +1600,9 @@ export const register: Register = on => {
                       $,
                       selected,
                       `My direction for this backlog item: ${direction}`,
-                      isDecision ? `Directed: ${fit(direction, 200)}` : undefined,
+                      isDecision
+                        ? fit(`Directed: ${direction}`, RESOLUTION_MAX)
+                        : undefined,
                     )
                   }
                 }}
@@ -1585,7 +1630,10 @@ export const register: Register = on => {
                     $,
                     selected,
                     'I accept your recommendation for this backlog item. Carry it out.',
-                    `Accepted the recommendation: ${fit(selected.recommendation, 200)}`,
+                    fit(
+                      `Accepted the recommendation: ${selected.recommendation}`,
+                      RESOLUTION_MAX,
+                    ),
                   )
                 }
               />

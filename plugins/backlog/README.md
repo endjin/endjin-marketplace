@@ -15,7 +15,7 @@ by priority, with a detail view where you decide, direct or dismiss each one.
 | Backlog pane | Open items grouped as Decisions, Defects, Issues and Tasks, each sorted critical to low |
 | Detail view | The item's full context, Claude's recommendation, its options, and the actions below |
 | Row above the prompt | `backlog: 4 open, » 1 in progress, ● 2 new, 1 to decide` for the current project, on the terminal and desktop, while it has open items; press `backlog:` to open or close the pane. VS Code and mobile show the counts on a plain status line instead, also when they attach to a terminal session |
-| `mcp__backlog__add` | Claude records one or more items; an open item with the same title is refreshed, not duplicated |
+| `mcp__backlog__add` | Claude records one or more items; an open item with the same title is refreshed, not duplicated: it takes the category, priority, detail, options and recommendation given, so a defect recorded again as a decision becomes one, and the reply says it moved |
 | `mcp__backlog__update` | Claude marks an item in progress or done, re-prioritises it, or appends a note |
 | `mcp__backlog__list` | Claude lists the backlog, or reads one item in full; new items are flagged `new`, and an item in progress for a day or more says for how long |
 
@@ -108,9 +108,23 @@ not the one that recorded it.
 
 Items are never deleted, only marked done or dismissed. To clear the backlog, delete the files.
 
-Limits are enforced when Claude writes, never by cutting text short: one `add` call takes at
-most 50 items, a detail at most 20,000 characters, and a note at most 10,000. A call over a
-limit is refused with the reason, so Claude can split it.
+Most limits are enforced when Claude writes, by refusing with the reason, so Claude can shorten
+or split what it sent:
+
+| Limit | Over it |
+| --- | --- |
+| 50 items in one `add` call | The call is refused whole |
+| Title: 200 characters, counted with its whitespace collapsed | `add` skips that item and records the rest; `update` is refused |
+| Options: nine with a label | `add` skips that item and records the rest |
+| Detail: 20,000 characters | `add` skips that item and records the rest |
+| Note: 10,000 characters | `update` is refused |
+
+Four shorter fields are cut to their limit instead, without a message: an option's label at 120
+characters, an option's detail at 1,000, and a recommendation and a resolution at 2,000 each.
+
+A resolution the pane writes, `Accepted the recommendation: ...` or `Directed: ...`, is kept
+whole up to that 2,000, and ends with an ellipsis when it is cut. The direction itself reaches
+Claude whole.
 
 ## Requirements and limits
 

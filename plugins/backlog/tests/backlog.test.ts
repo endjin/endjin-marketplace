@@ -3282,3 +3282,208 @@ test('Claude is told to give an item back when it stops work on it unfinished', 
   )
   await ui.unmount()
 })
+
+test('an item whose title is over the limit is skipped whole, never cut, and one at the limit is kept whole', async ($, on) => {
+  const { files, toasts, ids } = world(on)
+  await $.session.start(start)
+  const atLimit = `${'t'.repeat(196)} END`
+  expect(atLimit).toHaveLength(200)
+  // Alike in their first 200 characters: cut, they would be one item.
+  const shared = 's'.repeat(200)
+  // Over the limit as sent, under it once its whitespace is one space.
+  const spaced = `Spaced${' '.repeat(250)}out`
+
+  const added = await call($, 'add', {
+    items: [
+      { ...DEFECT, title: `${shared}A` },
+      { ...DEFECT, title: `${shared}B` },
+      { ...DEFECT, title: atLimit },
+      { ...DEFECT, title: spaced },
+    ],
+  })
+
+  const [kept, short] = ids()
+  expect(ids()).toHaveLength(2)
+  expect(String(added.result)).toBe(
+    [
+      'Recorded on the backlog:',
+      `- skipped "${'s'.repeat(59)}…": its title is 201 characters and the limit is 200`,
+      `- skipped "${'s'.repeat(59)}…": its title is 201 characters and the limit is 200`,
+      `- ${kept}: ${atLimit}`,
+      `- ${short}: Spaced out`,
+    ].join('\n'),
+  )
+  expect([...files.values()].some(text => text.includes('sss'))).toBe(false)
+  expect(await full($, kept ?? '')).toMatch(`: ${atLimit}\n`)
+  expect(toasts).toEqual(['Backlog: 2 items recorded'])
+})
+
+test('an item with more options than the limit is skipped whole, and one with nine is kept whole', async ($, on) => {
+  const { ids } = world(on)
+  await $.session.start(start)
+  const options = (count: number) =>
+    Array.from({ length: count }, (_, index) => ({ label: `Choice ${index + 1}` }))
+
+  const added = await call($, 'add', {
+    items: [
+      { ...DECISION, title: 'Ten ways', options: options(10) },
+      // Nine with a label: the blank ones are no options.
+      {
+        ...DECISION,
+        title: 'Nine ways',
+        options: [{ label: ' ' }, ...options(9), { detail: 'No label.' }],
+      },
+    ],
+  })
+
+  const id = ids()[0] ?? ''
+  expect(ids()).toHaveLength(1)
+  expect(String(added.result)).toBe(
+    [
+      'Recorded on the backlog:',
+      '- skipped "Ten ways": it has 10 options and the limit is 9',
+      `- ${id}: Nine ways`,
+    ].join('\n'),
+  )
+  expect(await full($, id)).toMatch(
+    `Options:\n${options(9)
+      .map(option => `- ${option.label}`)
+      .join('\n')}\n\n`,
+  )
+})
+
+test('an update with a title over the limit is refused whole, and one at the limit is taken whole', async ($, on) => {
+  const { files, ids } = world(on)
+  await $.session.start(start)
+  await call($, 'add', { items: [DEFECT] })
+  const id = ids()[0] ?? ''
+  const written = files.size
+
+  const refused = await call($, 'update', {
+    id,
+    title: 'u'.repeat(201),
+    priority: 'low',
+  })
+  expect(refused).toEqual({
+    deny: 'The title is 201 characters and the limit is 200. Nothing was changed: shorten it.',
+  })
+  expect(files.size).toBe(written)
+  expect(await full($, id)).toMatch(
+    '(defect, high priority, open): Retry loop never backs off',
+  )
+
+  const atLimit = `${'u'.repeat(196)} END`
+  const updated = await call($, 'update', { id, title: atLimit })
+  expect(String(updated.result)).toBe(`Updated ${id}: open, high priority.`)
+  expect(await full($, id)).toMatch(`: ${atLimit}\n`)
+})
+
+test('a long recommendation accepted, and a long direction given, are recorded whole as how the item was settled', async ($, on) => {
+  const { clock, ids } = world(on)
+  await $.session.start(start)
+  const recommendation = `${'r'.repeat(1490)} THE-END`
+  const direction = `${'d'.repeat(1190)} THE-END`
+  await call($, 'add', {
+    items: [
+      { ...DECISION, title: 'To accept', recommendation },
+      { ...DECISION, title: 'To direct' },
+    ],
+  })
+  const [accepted, directed] = ids()
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await ui.press({ key: `open:${accepted}` })
+  await ui.press({ key: 'accept' })
+  await ui.press({ key: 'back' })
+  await ui.press({ key: `open:${directed}` })
+  await ui.input({ key: 'direct', text: direction })
+  await ui.unmount()
+
+  // As written, and as the poll reads them back from the folder.
+  for (const wait of [0, 5000]) {
+    await clock.advance(wait)
+    expect(await full($, accepted ?? '')).toMatch(
+      `Resolution: Accepted the recommendation: ${recommendation}`,
+    )
+    expect(await full($, directed ?? '')).toMatch(
+      `Resolution: Directed: ${direction}`,
+    )
+  }
+})
+
+test('a direction longer than a resolution holds is sent to Claude whole, and recorded up to the limit with an ellipsis', async ($, on) => {
+  const { prompts, clock, ids } = world(on)
+  await $.session.start(start)
+  await call($, 'add', { items: [DECISION] })
+  const id = ids()[0] ?? ''
+  const direction = `${'d'.repeat(2490)} THE-END`
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await ui.press({ key: `open:${id}` })
+  await ui.input({ key: 'direct', text: direction })
+  await ui.unmount()
+  await clock.advance(5000)
+
+  expect(prompts[0]).toMatch(direction)
+  const resolution =
+    (await full($, id))
+      .split('\n\n')
+      .find(part => part.startsWith('Resolution: '))
+      ?.slice('Resolution: '.length) ?? ''
+  expect(resolution).toHaveLength(2000)
+  expect(resolution).toBe(`Directed: ${'d'.repeat(1989)}…`)
+})
+
+test('recording an open item again under another category moves it there, with the options that go with it, and says so', async ($, on) => {
+  const { ids } = world(on)
+  await $.session.start(start)
+  await call($, 'add', { items: [DEFECT] })
+  const id = ids()[0] ?? ''
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await ui.find({ type: 'Text', text: 'Defects' })).toBeDefined()
+
+  const again = await call($, 'add', {
+    items: [
+      {
+        ...DEFECT,
+        category: 'decision',
+        options: [{ label: 'Back off' }, { label: 'Give up after three' }],
+        recommendation: 'Back off.',
+      },
+    ],
+  })
+
+  expect(String(again.result)).toBe(
+    `Recorded on the backlog:\n- ${id}: already on the backlog, refreshed, and moved from defect to decision`,
+  )
+  expect(ids()).toEqual([id])
+  expect(await full($, id)).toMatch(
+    `Backlog item ${id} (decision, high priority, open): Retry loop never backs off`,
+  )
+  expect(await ui.find({ type: 'Text', text: 'Defects' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: 'Decisions' })).toBeDefined()
+
+  // A decision's actions, and no Fix now beside its options.
+  await ui.press({ key: `open:${id}` })
+  expect(await actions(ui)).toEqual([
+    'back',
+    'option:0',
+    'option:1',
+    'accept',
+    'done',
+    'dismiss',
+    'raise',
+    'lower',
+  ])
+  await ui.unmount()
+
+  // The same category again, or one that is no category, moves nothing.
+  for (const category of ['decision', 'chore']) {
+    const same = await call($, 'add', { items: [{ ...DEFECT, category }] })
+    expect(String(same.result)).toBe(
+      `Recorded on the backlog:\n- ${id}: already on the backlog, refreshed`,
+    )
+    expect(await full($, id)).toMatch('(decision, high priority, open)')
+  }
+})
