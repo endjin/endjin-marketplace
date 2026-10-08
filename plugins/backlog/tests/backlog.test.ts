@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { ElementQuery, Engine, FoundElement } from 'claude-code/testing'
-import type { On, RenderSurface, UiPane } from 'claude-code'
+import type { On, RenderSurface, RenderViewport, UiPane } from 'claude-code'
 
 const DIR = '/home/t/.claude/backlog/items'
 const PANE = {
@@ -204,6 +204,10 @@ const world = (
   })
   // What the band shows when the mod draws nothing of its own there.
   on('ui.render', { component: 'AbovePrompt' }, ($, e) =>
+    $.ui.resolve(e).Box({ key: 'beneath' }),
+  )
+  // What a reply shows when the mod draws nothing of its own there.
+  on('ui.render', { component: 'AssistantMessage' }, ($, e) =>
     $.ui.resolve(e).Box({ key: 'beneath' }),
   )
   on('ui.log', ($, e) => {
@@ -3486,4 +3490,355 @@ test('recording an open item again under another category moves it there, with t
     )
     expect(await full($, id)).toMatch('(decision, high priority, open)')
   }
+})
+
+const LINK =
+  'https://github.com/endjin/endjin-marketplace/blob/main/plugins/backlog/README.md'
+const FULLSCREEN = { columns: 100, rows: 40, isFullscreen: true }
+const MAIN_SCREEN = { columns: 100, rows: 40, isFullscreen: false }
+
+// Where a link the mod draws for an item points, and the link as written.
+const hrefTo = (id: string) => `${LINK}#${id}`
+const linkTo = (id: string) => `[${id}](${hrefTo(id)})`
+
+// A block of Claude's reply drawn on `surface`, the first of its reply and in
+// the fullscreen terminal's viewport unless said otherwise.
+const reply = (
+  $: Engine,
+  surface: RenderSurface,
+  text: string,
+  shape: {
+    viewport?: RenderViewport | null
+    isFirstOfReply?: boolean
+    isSummary?: true
+  } = {},
+) =>
+  $.ui.mount({
+    plugin: 'backlog',
+    component: 'AssistantMessage',
+    surface,
+    requestId: 'message-1',
+    props: {
+      text,
+      isFirstOfReply: shape.isFirstOfReply ?? true,
+      ...(shape.isSummary === true ? { isSummary: true as const } : {}),
+    },
+    ...(shape.viewport === null
+      ? {}
+      : { viewport: shape.viewport ?? FULLSCREEN }),
+  })
+
+// The mod's Markdown in a reply, undefined when it draws none.
+const markdown = (ui: Drawing) => ui.find({ type: 'Markdown' })
+
+// The key a press on the reply's `index`th Markdown is addressed to; a reply
+// with no such Markdown fails here.
+const keyOf = async (ui: Drawing, index = 0) => {
+  const key = (await ui.findAll({ type: 'Markdown' }))[index]?.key
+  expect(key).toBeDefined()
+
+  return String(key)
+}
+
+// Whether a reply shows what is beneath the mod, the mod drawing nothing.
+const leaves = async (ui: Drawing) =>
+  (await ui.find({ key: 'beneath' })) !== undefined &&
+  (await markdown(ui)) === undefined
+
+// A backlog of three: one open here, one done here, one open in another
+// project, all read by the session.
+const three = async ($: Engine, on: On, setting: Setting = {}) => {
+  const held = world(on, '/work/app', 'enter', setting)
+  await $.session.start(start)
+  await call($, 'add', {
+    items: [DEFECT, { ...DEFECT, title: 'Already fixed' }],
+  })
+  const [open = '', done = ''] = held.ids()
+  await call($, 'update', { id: done, status: 'done', resolution: 'Fixed.' })
+  held.elsewhere({
+    id: 'ot44ot44',
+    set: recorded('Rate limit is undocumented', '/work/api'),
+  })
+  await held.clock.advance(5000)
+
+  return { ...held, open, done, other: 'ot44ot44' }
+}
+
+for (const surface of ['terminal', 'desktop'] as const) {
+  test(`on the ${surface}, the ids of items in Claude's reply are links, and other words are left as written`, async ($, on) => {
+    const { open, done, other } = await three($, on)
+    const text = `Done:\n- ${open} retry fixed\n- ${done} closed, and ${other} elsewhere\n- zz00zz00 is no item, nor ${open}x nor x-${open}`
+    // The desktop says nothing of fullscreen.
+    const ui = await reply($, surface, text, {
+      viewport: surface === 'desktop' ? null : FULLSCREEN,
+    })
+    const drawn = await markdown(ui)
+
+    expect(drawn?.props.text).toBe(
+      `Done:\n- ${linkTo(open)} retry fixed\n- ${linkTo(done)} closed, and ${linkTo(other)} elsewhere\n- zz00zz00 is no item, nor ${open}x nor x-${open}`,
+    )
+    expect(drawn?.props.pressableLinks).toEqual([
+      hrefTo(open),
+      hrefTo(done),
+      hrefTo(other),
+    ])
+    await ui.unmount()
+  })
+}
+
+for (const surface of ['terminal', 'desktop'] as const) {
+  test(`on the ${surface}, pressing an id in Claude's reply opens the pane, focused, on that item`, async ($, on) => {
+    const { opened, open, other } = await three($, on)
+    const ui = await reply($, surface, `See ${open} and ${other}.`)
+    const key = await keyOf(ui)
+
+    await ui.press({ key, link: { href: hrefTo(open) } })
+    expect(opened.at(-1)).toEqual({ id: 'backlog', focus: true })
+
+    const pane = await $.ui.mount({ ...PANE, surface })
+    expect(await pane.find({ key: 'back' })).toBeDefined()
+    expect(
+      await pane.find({ type: 'Text', text: 'Retry loop never backs off' }),
+    ).toBeDefined()
+
+    await ui.press({ key, link: { href: hrefTo(other) } })
+    expect(opened.at(-1)).toEqual({ id: 'backlog', focus: true })
+    expect(
+      await pane.find({ type: 'Text', text: 'Rate limit is undocumented' }),
+    ).toBeDefined()
+    expect(
+      await pane.find({ type: 'Text', text: 'Retry loop never backs off' }),
+    ).toBeUndefined()
+    await pane.unmount()
+    await ui.unmount()
+  })
+}
+
+test("on the terminal's main screen, and in an editor or on a phone, ids in Claude's reply stay plain text", async ($, on) => {
+  const { open } = await three($, on)
+
+  for (const [surface, viewport] of [
+    ['terminal', MAIN_SCREEN],
+    ['terminal', null],
+    ['vscode', FULLSCREEN],
+    ['mobile', FULLSCREEN],
+  ] as const) {
+    const ui = await reply($, surface, `See ${open}.`, { viewport })
+    expect(await leaves(ui)).toBe(true)
+    await ui.unmount()
+  }
+})
+
+test("a summary of Claude's text, and a reply naming no item, are left to the engine", async ($, on) => {
+  const { open } = await three($, on)
+
+  const summary = await reply($, 'terminal', `Fixed ${open}.`, {
+    isSummary: true,
+  })
+  expect(await leaves(summary)).toBe(true)
+  await summary.unmount()
+
+  for (const text of ['All checks pass on this branch.', 'Ok.', '']) {
+    const ui = await reply($, 'terminal', text)
+    expect(await leaves(ui)).toBe(true)
+    await ui.unmount()
+  }
+})
+
+test('ids in code, and in links already written, are left as they are', async ($, on) => {
+  const { open, done, other } = await three($, on)
+  const kept = [
+    `Run \`${open}\` and \`\`x ${done}\`\`:`,
+    '```sh',
+    `echo ${open}`,
+    '```',
+    '  ~~~',
+    `  ${other}`,
+    '  ~~~',
+    `See ${linkTo(open)}, [the ${done} item](https://example.test/a), <https://example.test/${other}> and https://example.test/${done}.`,
+  ].join('\n')
+  const ui = await reply($, 'terminal', `${kept}\nThen ${other}.`)
+  const drawn = await markdown(ui)
+
+  expect(drawn?.props.text).toBe(`${kept}\nThen ${linkTo(other)}.`)
+  expect(drawn?.props.pressableLinks).toEqual([hrefTo(other)])
+  await ui.unmount()
+
+  // With nothing left to link, the reply is the engine's.
+  const plain = await reply($, 'terminal', kept)
+  expect(await leaves(plain)).toBe(true)
+  await plain.unmount()
+})
+
+test('the first block of a reply draws its bullet, and a later block lines up beneath it', async ($, on) => {
+  const { open } = await three($, on)
+
+  const first = await reply($, 'terminal', `See ${open}.`)
+  expect((await first.find({ key: 'bullet' }))?.text).toBe('⏺ ')
+  await first.unmount()
+
+  const later = await reply($, 'terminal', `See ${open}.`, {
+    isFirstOfReply: false,
+  })
+  expect(await later.find({ key: 'bullet' })).toBeUndefined()
+  expect(await markdown(later)).toBeDefined()
+  await later.unmount()
+})
+
+test('pressing the id of an item that has left the backlog says so, and opens nothing', async ($, on) => {
+  const { files, filesOf, opened, toasts, done } = await three($, on)
+  const ui = await reply($, 'terminal', `See ${done}.`)
+  const key = await keyOf(ui)
+  const before = opened.length
+
+  // Gone from the folder since the last poll.
+  for (const path of filesOf(done)) {
+    files.delete(path)
+  }
+
+  await ui.press({ key, link: { href: hrefTo(done) } })
+  expect(toasts.at(-1)).toBe(`Backlog: ${done} is no longer on the backlog`)
+  expect(opened).toHaveLength(before)
+
+  // The read the press made has taken its link away.
+  expect(await leaves(ui)).toBe(true)
+  await ui.unmount()
+})
+
+test('pressing an id where the pane cannot be placed says why', async ($, on) => {
+  const { toasts, open } = await three($, on, { notPlaced: 'too narrow' })
+  const ui = await reply($, 'terminal', `See ${open}.`)
+  const key = await keyOf(ui)
+
+  await ui.press({ key, link: { href: hrefTo(open) } })
+  expect(toasts.at(-1)).toBe('Backlog: the pane is not shown: too narrow')
+  await ui.unmount()
+})
+
+test('an id next to punctuation, at either end of a line or named twice is linked each time, and one in a path, a file name, an address or a code span is not', async ($, on) => {
+  const { open, done, other } = await three($, on)
+  const linked = [
+    `(${open}) and ${open}, then ${open}: done`,
+    `${done} starts this line and ends it ${done}`,
+    `${other} twice: ${other} ${other}.`,
+  ]
+  const kept = [
+    `src/${open}/x.ts`,
+    `${open}.ts`,
+    `example.com/${open}`,
+    `${open}@example.com`,
+    '``a` b ' + open + ' `',
+  ]
+  const ui = await reply($, 'terminal', [...linked, ...kept].join('\n'))
+  const drawn = await markdown(ui)
+
+  expect(drawn?.props.text).toBe(
+    [
+      `(${linkTo(open)}) and ${linkTo(open)}, then ${linkTo(open)}: done`,
+      `${linkTo(done)} starts this line and ends it ${linkTo(done)}`,
+      `${linkTo(other)} twice: ${linkTo(other)} ${linkTo(other)}.`,
+      ...kept,
+    ].join('\n'),
+  )
+  expect(drawn?.props.pressableLinks).toEqual([
+    hrefTo(open),
+    hrefTo(done),
+    hrefTo(other),
+  ])
+  await ui.unmount()
+
+  // With nothing left to link, the reply is the engine's.
+  const plain = await reply($, 'terminal', kept.join('\n'))
+  expect(await leaves(plain)).toBe(true)
+  await plain.unmount()
+})
+
+test('a long reply is drawn in pieces, and an id in a later piece is a link that piece answers', async ($, on) => {
+  const { opened, open } = await three($, on)
+  const paragraph = 'All checks pass on this branch. '.repeat(20).trimEnd()
+  const text = `${Array(20).fill(paragraph).join('\n\n')}\n\nSee ${open}.`
+  expect(text.length).toBeGreaterThan(9000)
+
+  const ui = await reply($, 'terminal', text)
+  const pieces = await ui.findAll({ type: 'Markdown' })
+  const last = pieces.at(-1)
+
+  expect(pieces.length).toBeGreaterThanOrEqual(2)
+  expect(pieces[0]?.props.pressableLinks).toBeUndefined()
+  expect(last?.props.text).toMatch(`See ${linkTo(open)}.`)
+  expect(last?.props.pressableLinks).toEqual([hrefTo(open)])
+
+  const key = await keyOf(ui, pieces.length - 1)
+  await ui.press({ key, link: { href: hrefTo(open) } })
+  expect(opened.at(-1)).toEqual({ id: 'backlog', focus: true })
+
+  const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await pane.find({ key: 'back' })).toBeDefined()
+  expect(
+    await pane.find({ type: 'Text', text: 'Retry loop never backs off' }),
+  ).toBeDefined()
+  await pane.unmount()
+  await ui.unmount()
+})
+
+test('pressing the id of a done item opens its detail view', async ($, on) => {
+  const { opened, done } = await three($, on)
+  const ui = await reply($, 'desktop', `Closed ${done}.`)
+  const key = await keyOf(ui)
+
+  await ui.press({ key, link: { href: hrefTo(done) } })
+  expect(opened.at(-1)).toEqual({ id: 'backlog', focus: true })
+
+  const pane = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await pane.find({ key: 'back' })).toBeDefined()
+  expect(
+    await pane.find({ type: 'Text', text: 'Already fixed' }),
+  ).toBeDefined()
+  await pane.unmount()
+  await ui.unmount()
+})
+
+test('a reply the mod fails to draw is left to the engine', async ($, on) => {
+  // Armed once the backlog is read, for the reply's own read.
+  let isFailing = false
+  on('state.get', ($, e, next) => {
+    if (isFailing && e.key === 'ids') {
+      isFailing = false
+
+      return { deny: 'the state is unavailable' }
+    }
+
+    return next(e)
+  })
+  const { open } = await three($, on)
+  isFailing = true
+
+  const ui = await reply($, 'terminal', `See ${open}.`)
+  expect(isFailing).toBe(false)
+  expect(await leaves(ui)).toBe(true)
+  await ui.unmount()
+})
+
+test('a change to an item leaves the ids in state alone, and an item added writes them', async ($, on) => {
+  const { clock, ids } = world(on)
+  const writes: string[] = []
+  on('state.set', ($, e, next) => {
+    writes.push(String(e.key))
+
+    return next(e)
+  })
+  await $.session.start(start)
+  await clock.advance(5000)
+  writes.length = 0
+
+  await call($, 'add', { items: [DEFECT] })
+  const [id = ''] = ids()
+  expect(writes).toContain('ids')
+
+  await clock.advance(5000)
+  writes.length = 0
+  await call($, 'update', { id, priority: 'low' })
+  await clock.advance(5000)
+  expect(writes).toContain('items')
+  expect(writes).not.toContain('ids')
 })

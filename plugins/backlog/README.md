@@ -15,6 +15,7 @@ by priority, with a detail view where you decide, direct or dismiss each one.
 | Backlog pane | Open items grouped as Decisions, Defects, Issues and Tasks, each sorted critical to low |
 | Detail view | The item's full context, Claude's recommendation, its options, and the actions below |
 | Row above the prompt | `backlog: 4 open, » 1 in progress, ● 2 new, 1 to decide` for the current project, on the terminal and desktop, while it has open items; press `backlog:` to open or close the pane. VS Code and mobile show the counts on a plain status line instead, also when they attach to a terminal session |
+| Ids in Claude's replies | On the desktop and in the fullscreen terminal, an item's id is a link that opens the pane on that item |
 | `mcp__backlog__add` | Claude records one or more items; an open item with the same title is refreshed, not duplicated: it takes the category, priority, detail, options and recommendation given, so a defect recorded again as a decision becomes one, and the reply says it moved |
 | `mcp__backlog__update` | Claude marks an item in progress or done, re-prioritises it, or appends a note |
 | `mcp__backlog__list` | Claude lists the backlog, or reads one item in full; new items are flagged `new`, and an item in progress for a day or more says for how long |
@@ -85,6 +86,15 @@ An action the backlog folder does not take, because it cannot be read or written
 nothing and says why in a toast; press it again once the folder is back. When an item was sent to
 Claude but could not be marked in progress, the toast says that instead.
 
+## Ids in the transcript
+
+Claude's replies name items by id, such as `iqzyou3r`. On the desktop and in the fullscreen
+terminal, the id of every item on the backlog, in any project and open or closed, is a link:
+click it to open the pane on that item. On the terminal's main screen, and in VS Code and on
+mobile, ids stay plain text: a click there would open a browser, not the pane. An id inside
+a code block or a code span, or inside a link Claude already wrote, is left as it is. An item that
+has left the backlog since the reply was drawn says so in a toast.
+
 ## One backlog across sessions
 
 The backlog is a folder of change records, `~/.claude/backlog/items/` (under `CLAUDE_CONFIG_DIR`
@@ -150,6 +160,6 @@ Loading it with `--plugin-dir` makes the engine write its type declarations into
 
 | Path | Holds |
 | --- | --- |
-| `hooks/register.tsx` | The hooks module: tools, command, system-prompt section, storage and the pane |
+| `hooks/register.tsx` | The hooks module: tools, command, system-prompt section, storage, the pane and the links to items in replies |
 | `types/index.d.ts` | The item and change-record shapes, and the `$.state` contract |
 | `tests/backlog.test.ts` | Behaviour tests over an in-memory folder, on the terminal, desktop, VS Code and mobile surfaces |

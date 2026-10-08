@@ -28,6 +28,7 @@ const NOTE_MAX = 10000
 const RESOLUTION_MAX = 2000
 // A Markdown element draws at most 10,000 characters: longer text is drawn as
 // several, cut at paragraph breaks.
+const MARKDOWN_MAX = 10000
 const CHUNK = 9000
 
 const CATEGORIES = ['decision', 'defect', 'issue', 'task'] as const
@@ -70,6 +71,18 @@ const FRESH_MS = 10 * 60 * 1000
 const DAY_MS = 24 * 60 * 60 * 1000
 // The note a session leaves on each item it had in progress when it ends.
 const RELEASED = 'Released: the session working on it ended.'
+// Where no mod answers the press, the surface opens this page: a link not
+// https, http or file draws as text.
+const HREF_BASE =
+  'https://github.com/endjin/endjin-marketplace/blob/main/plugins/backlog/README.md'
+// The most links one Markdown answers, the engine's own limit.
+const LINKS_MAX = 256
+// The longest reply linked here: the engine draws 100,000 characters in one
+// drawing, and linking adds about 95 per id.
+const DRAW_MAX = 90000
+// The bullet opening a reply, drawn here as the engine draws its own. It
+// mirrors the engine's, not read from it: check it live.
+const BULLET = '⏺ '
 
 const GUIDANCE = `# Backlog
 
@@ -88,6 +101,7 @@ const view = atom({ plugin: 'backlog', key: 'view' } as const, {
 const project = atom({ plugin: 'backlog', key: 'project' } as const, '')
 const fresh = atom({ plugin: 'backlog', key: 'fresh' } as const, [])
 const aged = atom({ plugin: 'backlog', key: 'aged' } as const, {})
+const ids = atom({ plugin: 'backlog', key: 'ids' } as const, [])
 
 // File name to the change record last read from it; `stamp` is the listing's
 // time and size, '' for a file this session just wrote.
@@ -429,6 +443,88 @@ const chunks = (text: string, limit = CHUNK): string[] => {
   return parts.filter(part => part.trim() !== '')
 }
 
+// Whether a text may name an item: a run of 4 to 12 of an id's characters
+// standing alone. A cheap first look: it spares the state read and the scan
+// only for a block with no such run, which most prose has.
+const CANDIDATE = /(?<![a-z0-9])[a-z0-9]{4,12}(?![a-z0-9])/
+
+// What a line's scan steps over whole, and the ids it may link: an inline code
+// span (its opening run not part of a longer one), a link or image already
+// written (one level of brackets in its text and parentheses in its target),
+// an autolink, a bare address, then a candidate id (group 2). No letter, digit,
+// `_` or `-` touches the id, nor a `/`, `.`, `@`, `#` or `:` with a letter or
+// digit beyond it, as in a path, a file name, a host or an address.
+const SPANS =
+  /(?<!`)(`+)(?!`)[^\n]*?(?<!`)\1(?!`)|!?\[(?:[^[\]\n]|\[[^[\]\n]*\])*\]\([^()\n]*(?:\([^()\n]*\)[^()\n]*)*\)|<[A-Za-z][A-Za-z0-9+.-]*:[^<>\s]*>|[A-Za-z][A-Za-z0-9+.-]*:\/\/\S+|\bwww\.\S+|(?<![A-Za-z0-9_-])(?<![A-Za-z0-9][/.@#:])([a-z0-9]{4,12})(?![A-Za-z0-9_-]|[/.@#:][A-Za-z0-9])/g
+
+const hrefOf = (id: string): string => `${HREF_BASE}#${id}`
+
+// The id a link this mod drew points at, '' for any other link.
+const idOfHref = (href: string): string => {
+  const id = href.startsWith(`${HREF_BASE}#`)
+    ? href.slice(HREF_BASE.length + 1)
+    : ''
+
+  return ID.test(id) ? id : ''
+}
+
+// `text` with each id of `known` written as a link to its item, and the links'
+// targets, at most LINKS_MAX of them: one Markdown's worth, as each piece of a
+// reply is linked on its own. Code, in a block or a span, and links already
+// written are left as they are.
+const linkIds = (
+  text: string,
+  known: ReadonlySet<string>,
+): { text: string; hrefs: string[] } => {
+  const hrefs = new Set<string>()
+  let fence: Fence | undefined
+  const lines = text.split('\n').map(line => {
+    const before = fence
+    fence = fenceAfter(line, fence)
+
+    // A block's opening and closing lines are its own too.
+    if (before !== undefined || fence !== undefined) {
+      return line
+    }
+
+    return line.replace(
+      SPANS,
+      (whole: string, _run: string | undefined, id: string | undefined) => {
+        if (id === undefined || !known.has(id)) {
+          return whole
+        }
+
+        const href = hrefOf(id)
+
+        if (!hrefs.has(href) && hrefs.size >= LINKS_MAX) {
+          return whole
+        }
+
+        hrefs.add(href)
+
+        return `[${id}](${href})`
+      },
+    )
+  })
+
+  return { text: lines.join('\n'), hrefs: [...hrefs] }
+}
+
+// `text` cut into pieces first and each piece linked, so no link straddles a
+// cut. A piece its links push past what a Markdown draws is cut again, finer.
+const linkedPieces = (
+  text: string,
+  known: ReadonlySet<string>,
+  limit = CHUNK,
+): { text: string; hrefs: string[] }[] =>
+  chunks(text, limit).flatMap(part => {
+    const linked = linkIds(part, known)
+
+    return linked.text.length > MARKDOWN_MAX && limit > CHUNK / 8
+      ? linkedPieces(part, known, Math.floor(limit / 2))
+      : [linked]
+  })
+
 // The first of these that is set and not empty holds the backlog. With none,
 // there is no backlog: a guess, such as `/.claude`, would be a folder no other
 // session reads.
@@ -453,6 +549,16 @@ const folder = async ($: EngineInterface): Promise<string> => {
 // What went wrong, without the `Error:` its text starts with.
 const reason = (error: unknown): string =>
   String(error).replace(/^\w*Error: /, '')
+
+// What a hook refused `$.<call>` with, without the engine's lead naming who
+// called what.
+const why = (error: unknown, call: string): string => {
+  const text = reason(error)
+  const lead = `$.${call}: `
+  const at = text.lastIndexOf(lead)
+
+  return at < 0 ? text : text.slice(at + lead.length)
+}
 
 // Answers a tool call whose hook failed, the folder unreadable or unwritable.
 // Left skipped, the hook would have the engine fail the call as having no
@@ -505,12 +611,12 @@ const freshOf = async (
     .sort()
 }
 
-// Whether the host already holds `ids` as the new items. Compared with the
+// Whether the host already holds `marked` as the new items. Compared with the
 // host, not a copy here: a resumed session loses what it wrote while starting.
 const isFreshLevel = async (
   $: EngineInterface,
-  ids: string[],
-): Promise<boolean> => (await read($, fresh)).join(' ') === ids.join(' ')
+  marked: string[],
+): Promise<boolean> => (await read($, fresh)).join(' ') === marked.join(' ')
 
 // How many whole days each item in progress has been so, by id in a stable
 // order; an item under one day has no entry.
@@ -612,10 +718,18 @@ const publish = async ($: EngineInterface): Promise<BacklogItem[]> => {
   const all = fold()
   await update($, items, () => all)
 
-  const ids = await freshOf($, all)
+  // Written only when an id appears or leaves, so a change to an item does
+  // not redraw every reply that links ids.
+  const every = all.map(one => one.id).sort()
 
-  if (!(await isFreshLevel($, ids))) {
-    await update($, fresh, () => ids)
+  if ((await read($, ids)).join(' ') !== every.join(' ')) {
+    await update($, ids, () => every)
+  }
+
+  const marked = await freshOf($, all)
+
+  if (!(await isFreshLevel($, marked))) {
+    await update($, fresh, () => marked)
   }
 
   const ages = await agedOf($, all)
@@ -1131,9 +1245,7 @@ const toggle = async ($: EngineInterface): Promise<void> => {
     try {
       await $.ui.close({ id: PANE })
     } catch (error) {
-      // The engine leads the hook's reason with who called what.
-      const why = reason(error).replace(/^.*\$\.ui\.close: /, '')
-      $.ui.toast(`Backlog: the pane stays open: ${why}`)
+      $.ui.toast(`Backlog: the pane stays open: ${why(error, 'ui.close')}`)
     }
 
     return
@@ -1145,6 +1257,35 @@ const toggle = async ($: EngineInterface): Promise<void> => {
 
   if (!opened.isPlaced) {
     $.ui.toast(`Backlog: the pane is not shown: ${opened.reason}`)
+  }
+}
+
+// Opens the pane, focused, on the item a link in Claude's reply names. A
+// press has no caller to refuse: what goes wrong is said in a toast, and the
+// press drops what a toast that throws leaves.
+const reveal = async ($: EngineInterface, href: string): Promise<void> => {
+  const id = idOfHref(href)
+
+  try {
+    // The item as the folder holds it now, not as of the last poll.
+    await sync($).catch(() => undefined)
+
+    if (!(await read($, items)).some(one => one.id === id)) {
+      $.ui.toast(`Backlog: ${id} is no longer on the backlog`)
+
+      return
+    }
+
+    await show($, id)
+    const opened = await $.ui.open({ id: PANE, title: 'Backlog', focus: true })
+
+    if (!opened.isPlaced) {
+      $.ui.toast(`Backlog: the pane is not shown: ${opened.reason}`)
+    }
+  } catch (error) {
+    $.ui.toast(
+      `Backlog: ${id} could not be opened: ${fit(why(error, 'ui.open'), 80)}`,
+    )
   }
 }
 
@@ -1344,6 +1485,74 @@ export const register: Register = on => {
         </Box>
       </Box>
     )
+  })
+
+  // An item's id in Claude's reply is a link that opens the pane on it, where
+  // a plain click reaches the mod: the desktop and the fullscreen terminal. On
+  // the terminal's main screen a click would open the link in a browser.
+  // A block with a known id is drawn by this mod alone, so another plugin's
+  // rewrite of that block does not show.
+  on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
+    const isPressable =
+      e.surface === 'desktop' ||
+      (e.surface === 'terminal' && e.viewport?.isFullscreen === true)
+
+    if (
+      !isPressable ||
+      e.props.isSummary === true ||
+      !CANDIDATE.test(e.props.text)
+    ) {
+      return next(e)
+    }
+
+    let tree
+    try {
+      const known = new Set(await read($, ids))
+      const linked = linkedPieces(e.props.text, known)
+      const length = linked.reduce((sum, piece) => sum + piece.text.length, 0)
+
+      if (
+        linked.some(piece => piece.hrefs.length > 0) &&
+        length <= DRAW_MAX
+      ) {
+        const { Box, Markdown, Text } = $.ui.resolve(e)
+        // A long reply is drawn as several Markdowns, each answering the
+        // links it draws.
+        const pieces = linked.map((piece, index) =>
+          piece.hrefs.length === 0 ? (
+            <Markdown key={`reply:${e.requestId}:${index}`} text={piece.text} />
+          ) : (
+            <Markdown
+              key={`reply:${e.requestId}:${index}`}
+              text={piece.text}
+              pressableLinks={piece.hrefs}
+              onLinkPress={link =>
+                reveal($, link.href).catch(() => undefined)
+              }
+            />
+          ),
+        )
+
+        tree = e.props.isFirstOfReply ? (
+          <Box flexDirection="row">
+            <Box key="bullet">
+              <Text>{BULLET}</Text>
+            </Box>
+            <Box flexDirection="column" flexGrow={1}>
+              {pieces}
+            </Box>
+          </Box>
+        ) : (
+          <Box flexDirection="column" marginLeft={2}>
+            {pieces}
+          </Box>
+        )
+      }
+    } catch {
+      // The engine draws the reply as it would have.
+    }
+
+    return tree ?? next(e)
   })
 
   on('tool.call', { tool: 'mcp__backlog__add' }, async ($, e) => {

@@ -92,6 +92,11 @@ declare module 'claude-code' {
        * ages.
        */
       aged: Record<string, number>
+      /**
+       * The ids of every item, sorted. Held apart from `items` so the replies
+       * that link ids redraw only when an id appears or leaves.
+       */
+      ids: string[]
     }
   }
 }
