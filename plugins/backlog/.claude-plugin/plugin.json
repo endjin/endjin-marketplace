@@ -1,0 +1,13 @@
+{
+  "name": "backlog",
+  "displayName": "Backlog",
+  "description": "A Claude Code pane that tracks the defects, issues, tasks and decisions your sessions turn up, grouped by category and priority, with a detail view to decide or direct the work.",
+  "author": {
+    "name": "endjin",
+    "url": "https://endjin.com"
+  },
+  "license": "MIT",
+  "keywords": ["mod", "pane", "backlog", "todo", "decisions", "triage"],
+  "repository": "https://github.com/endjin/endjin-marketplace",
+  "types": "./types/index.d.ts"
+}
