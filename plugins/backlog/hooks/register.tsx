@@ -21,6 +21,12 @@ import type {
 
 const PANE = 'backlog'
 const POLL_MS = 5000
+// After this many polls in a row that list the folder and find nothing new,
+// it is listed on every SLOW_EVERY-th poll alone (every thirty seconds), until
+// a listing finds a change, this session writes, or the person sends a prompt.
+// The other checks of a poll, which read no file, run on every one.
+const IDLE_POLLS = 12
+const SLOW_EVERY = 6
 const BATCH_MAX = 50
 const TITLE_MAX = 200
 const OPTIONS_MAX = 9
@@ -72,6 +78,15 @@ const FRESH_MS = 10 * 60 * 1000
 const DAY_MS = 24 * 60 * 60 * 1000
 // The note a session leaves on each item it had in progress when it ends.
 const RELEASED = 'Released: the session working on it ended.'
+
+// A closed item's records are folded into one file once the item has rested
+// this long, a few items a poll; a removal the host refuses is tried again
+// after a wait.
+const COMPACT_AFTER_MS = 60 * 60 * 1000
+const COMPACT_MAX = 3
+const COMPACT_RETRY_MS = 10 * 60 * 1000
+// Paths handed to one removal command: well under a command line's room.
+const REMOVE_MAX = 40
 // Where no mod answers the press, the surface opens this page: a link not
 // https, http or file draws as text.
 const HREF_BASE =
@@ -98,7 +113,39 @@ const view = atom({ plugin: 'backlog', key: 'view' } as const, {
   selected: null,
   scope: 'project',
   showClosed: false,
+  collapsed: [],
 })
+
+// The store key under which the folded sections are kept across sessions.
+const COLLAPSED = 'collapsed'
+
+// The categories among `raw`, each once, in their fixed order.
+const toCategories = (raw: unknown): BacklogCategory[] =>
+  CATEGORIES.filter(
+    category => Array.isArray(raw) && raw.includes(category),
+  )
+
+// Folds a section of the list to its heading, or unfolds it, and remembers
+// the choice past the session.
+const collapse = async (
+  $: EngineInterface,
+  category: BacklogCategory,
+): Promise<void> => {
+  const held = await update($, view, one => ({
+    ...one,
+    collapsed: one.collapsed.includes(category)
+      ? one.collapsed.filter(other => other !== category)
+      : toCategories([...one.collapsed, category]),
+  }))
+
+  try {
+    await $.store.set(COLLAPSED, held.collapsed)
+  } catch (error) {
+    $.ui.log(`backlog: could not remember the folded sections: ${reason(error)}`, {
+      to: 'debug',
+    })
+  }
+}
 const project = atom({ plugin: 'backlog', key: 'project' } as const, '')
 const fresh = atom({ plugin: 'backlog', key: 'fresh' } as const, [])
 const aged = atom({ plugin: 'backlog', key: 'aged' } as const, {})
@@ -120,6 +167,15 @@ let hasLoaded = false
 let lastAt = 0
 let queue: Promise<unknown> = Promise.resolve()
 let polling: Timer | undefined
+// Listing polls in a row that found nothing new, and polls skipped since the
+// last listing while idle.
+let idle = 0
+let skipped = 0
+// When compaction may next run: after a refused removal, not before a wait.
+let compactAfter = 0
+// Files a removal this session ran reported gone: one that is listed again
+// is not removed again, so a file the host holds on to costs no more commands.
+const swept = new Set<string>()
 
 // Reads and writes of the folder run one at a time within this session.
 // Across sessions nothing needs a lock: every write is a new file.
@@ -241,14 +297,52 @@ const toChange = (raw: unknown): BacklogChange | undefined => {
     return undefined
   }
 
-  return {
+  const change: BacklogChange = {
     id,
     at,
     sessionId: oneLine(fields.sessionId, 100),
     set: toFields(isWhole ? fields : record(fields.set)),
     note: isWhole ? '' : clean(fields.note, NOTE_MAX),
   }
+
+  // A record that compacts the item replaces files of the item's own alone.
+  if (Array.isArray(fields.folds)) {
+    change.folds = fields.folds.filter(
+      (name): name is string =>
+        typeof name === 'string' &&
+        name.startsWith(`${id}.`) &&
+        RECORD_NAME.test(name),
+    )
+    change.notes = (Array.isArray(fields.notes) ? fields.notes : [])
+      .map(record)
+      .filter(note => isTime(note.at) && typeof note.text === 'string')
+      .map(note => ({ at: note.at as number, text: clean(note.text, NOTE_MAX) }))
+      .filter(note => note.text !== '')
+
+    if (isTime(fields.createdAt)) {
+      change.createdAt = fields.createdAt
+    }
+  }
+
+  return change
 }
+
+// A record file's name: `<id>.<time>.<token>.json`, or the first version's
+// `<id>.json`.
+const RECORD_NAME = /^[a-z0-9]{4,12}(?:\.[a-z0-9]+\.[a-z0-9]+)?\.json$/
+
+// The fields a compacting record sets: every one, as the item stands.
+const fieldsOf = (item: BacklogItem): BacklogFields => ({
+  title: item.title,
+  category: item.category,
+  priority: item.priority,
+  status: item.status,
+  detail: item.detail,
+  options: item.options,
+  recommendation: item.recommendation,
+  resolution: item.resolution,
+  project: item.project,
+})
 
 // Every item, each the fold of its records in `at` order. Records set only
 // the fields they name, so a note from one session and a status from another
@@ -261,14 +355,31 @@ const fold = (): BacklogItem[] => {
 }
 
 const foldAll = (): BacklogItem[] => {
-  const ordered = [...records.entries()].sort(
-    ([nameA, a], [nameB, b]) =>
-      a.change.at - b.change.at || (nameA < nameB ? -1 : 1),
-  )
+  // A file a compacting record replaces applies no more, though it is still
+  // listed: a session that sees both folds the item once. At one time the
+  // compacting record goes first, so a change made at that moment by a
+  // session that did not see it folds after it.
+  const replaced = new Set<string>()
+
+  for (const { change } of records.values()) {
+    for (const name of change.folds ?? []) {
+      replaced.add(name)
+    }
+  }
+
+  const rank = (change: BacklogChange) => (change.folds === undefined ? 1 : 0)
+  const ordered = [...records.entries()]
+    .filter(([name]) => !replaced.has(name))
+    .sort(
+      ([nameA, a], [nameB, b]) =>
+        a.change.at - b.change.at ||
+        rank(a.change) - rank(b.change) ||
+        (nameA < nameB ? -1 : 1),
+    )
   const byId = new Map<string, BacklogItem>()
 
   for (const [, { change }] of ordered) {
-    const held: BacklogItem = byId.get(change.id) ?? {
+    const found: BacklogItem = byId.get(change.id) ?? {
       id: change.id,
       title: '',
       category: 'task',
@@ -286,6 +397,16 @@ const foldAll = (): BacklogItem[] => {
       workingSince: 0,
       workingIn: '',
     }
+    // A compacting record carries the notes and the first time whole, in
+    // place of what the files it replaced built up.
+    const held: BacklogItem =
+      change.folds === undefined
+        ? found
+        : {
+            ...found,
+            notes: change.notes ?? found.notes,
+            createdAt: change.createdAt ?? found.createdAt,
+          }
     // A record that names the status in progress claims the item, the later
     // claim winning; one that leaves the status out leaves the claim held.
     const isWorking = (change.set.status ?? held.status) === 'in_progress'
@@ -797,13 +918,20 @@ const append = async (
   )
   records.set(name, { stamp: '', change })
   folded = undefined
+  idle = 0
 }
 
-// Brings `records` level with the folder, which every session writes to.
-// Runs inside the queue.
-const level = async ($: EngineInterface): Promise<void> => {
+// Brings `records` level with the folder, which every session writes to, and
+// the state level with `records`; resolves whether anything changed. Without
+// `isListing` the folder is taken as unchanged and the checks that read no
+// file run alone. Runs inside the queue.
+const level = async (
+  $: EngineInterface,
+  isListing = true,
+): Promise<boolean> => {
   const dir = await folder($)
-  const entries = (await $.fs.exists(dir)) ? await $.fs.list(dir) : []
+  const entries =
+    isListing && (await $.fs.exists(dir)) ? await $.fs.list(dir) : []
   const names = new Set<string>()
   const before = new Set(fold().map(one => one.id))
   let hasChanged = !hasLoaded
@@ -838,7 +966,7 @@ const level = async ($: EngineInterface): Promise<void> => {
   }
 
   for (const name of [...records.keys()]) {
-    if (!names.has(name)) {
+    if (isListing && !names.has(name)) {
       records.delete(name)
       folded = undefined
       hasChanged = true
@@ -884,9 +1012,182 @@ const level = async ($: EngineInterface): Promise<void> => {
   }
 
   hasLoaded = true
+
+  return hasChanged
 }
 
-const sync = ($: EngineInterface): Promise<void> => inTurn(() => level($))
+const sync = ($: EngineInterface): Promise<void> =>
+  inTurn(() => level($).then(() => undefined))
+
+// One poll: the folder listed, or while idle on every SLOW_EVERY-th poll
+// alone, then the compaction. Runs inside the queue.
+const poll = async ($: EngineInterface): Promise<void> => {
+  skipped += 1
+  const isListing = idle < IDLE_POLLS || skipped >= SLOW_EVERY
+
+  if (isListing) {
+    skipped = 0
+  }
+
+  const hasChanged = await level($, isListing)
+
+  if (isListing) {
+    idle = hasChanged ? 0 : idle + 1
+    await compact($)
+  }
+}
+
+// Removes files of the folder by name through the host: the engine's own file
+// calls write and read, and never remove. `del` on Windows, `rm` elsewhere.
+// Neither's exit code is trusted (`del` exits 0 whatever it did): each file is
+// looked for afterwards, and one still there fails the call.
+const remove = async (
+  $: EngineInterface,
+  dir: string,
+  names: string[],
+): Promise<void> => {
+  const isWindows =
+    (await $.env.get('OS')) === 'Windows_NT' || /^[A-Za-z]:\//.test(dir)
+
+  for (let from = 0; from < names.length; from += REMOVE_MAX) {
+    const batch = names.slice(from, from + REMOVE_MAX)
+    const paths = batch.map(name => `${dir}/${name}`)
+    const ran = await $.process.run(
+      isWindows
+        ? [
+            'cmd',
+            '/c',
+            'del',
+            '/f',
+            '/q',
+            ...paths.map(path => path.replace(/\//g, '\\')),
+          ]
+        : ['rm', '-f', ...paths],
+    )
+    const left: string[] = []
+
+    for (const [index, path] of paths.entries()) {
+      const name = batch[index] ?? ''
+
+      if (await $.fs.exists(path)) {
+        left.push(name)
+        continue
+      }
+
+      records.delete(name)
+      unreadable.delete(name)
+      swept.add(name)
+    }
+
+    folded = undefined
+
+    if (left.length > 0) {
+      throw new Error(
+        `${left.length} of ${batch.length} files are still there after the removal (exit ${ran.exitCode}${ran.stderr.trim() === '' ? '' : `: ${oneLine(ran.stderr, 200)}`})`,
+      )
+    }
+  }
+}
+
+// Folds a closed item's records into one file and removes the rest: a few
+// items a poll, each once it has rested an hour, so a session changing it
+// meanwhile is unlikely, and a change it does make folds after the compacted
+// record or stands in a file of its own. The compacted file is written first,
+// so a session that sees it beside the files it replaces, or a removal that
+// fails part way, reads the item as it was. Runs inside the queue, after
+// `level`.
+const compact = async ($: EngineInterface): Promise<void> => {
+  const now = await $.clock.now()
+
+  if (!hasLoaded || now < compactAfter) {
+    return
+  }
+
+  const byId = new Map<string, string[]>()
+  const replaced = new Set<string>()
+
+  for (const [name, { change }] of records) {
+    byId.set(change.id, [...(byId.get(change.id) ?? []), name])
+
+    for (const gone of change.folds ?? []) {
+      replaced.add(gone)
+    }
+  }
+
+  const doomed: string[] = []
+  let written = 0
+
+  for (const item of fold()) {
+    const names = byId.get(item.id) ?? []
+    const live = names.filter(name => !replaced.has(name))
+    // The files a compaction already wrote off and still stand: removed again
+    // once, unless this session's removal already reported them gone.
+    const stale = names.filter(
+      name => replaced.has(name) && !swept.has(name),
+    )
+
+    if (
+      isOpen(item) ||
+      now - item.updatedAt < COMPACT_AFTER_MS ||
+      [...unreadable.keys()].some(name => name.startsWith(`${item.id}.`))
+    ) {
+      continue
+    }
+
+    if (live.length <= 1) {
+      doomed.push(...stale)
+      continue
+    }
+
+    if (written >= COMPACT_MAX) {
+      continue
+    }
+
+    const name = `${item.id}.${item.updatedAt.toString(36)}.${token(8)}.json`
+    const change: BacklogChange = {
+      id: item.id,
+      at: item.updatedAt,
+      sessionId: item.sessionId,
+      set: fieldsOf(item),
+      note: '',
+      notes: item.notes,
+      createdAt: item.createdAt,
+      folds: names,
+    }
+
+    try {
+      await $.fs.write(
+        `${await folder($)}/${name}`,
+        `${JSON.stringify(change, null, 2)}\n`,
+      )
+    } catch (error) {
+      // The folder is not taking writes: nothing more this poll.
+      $.ui.log(`backlog: could not compact ${item.id}: ${reason(error)}`, {
+        to: 'debug',
+      })
+      break
+    }
+
+    records.set(name, { stamp: '', change })
+    folded = undefined
+    doomed.push(...names)
+    written += 1
+  }
+
+  if (doomed.length === 0) {
+    return
+  }
+
+  try {
+    await remove($, await folder($), doomed)
+  } catch (error) {
+    compactAfter = now + COMPACT_RETRY_MS
+    $.ui.log(
+      `backlog: could not remove the records a compaction replaced: ${reason(error)}`,
+      { to: 'debug' },
+    )
+  }
+}
 
 // Changes one item as the folder holds it now, and resolves the item as it
 // then stands; undefined when no item has the id.
@@ -1325,6 +1626,19 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await place($)
 
+    // The sections folded in an earlier session stay folded.
+    try {
+      const collapsed = toCategories(await $.store.get(COLLAPSED))
+
+      if (collapsed.length > 0) {
+        await update($, view, one => ({ ...one, collapsed }))
+      }
+    } catch (error) {
+      $.ui.log(`backlog: could not read the folded sections: ${reason(error)}`, {
+        to: 'debug',
+      })
+    }
+
     await $.command.register({
       name: 'backlog',
       description:
@@ -1402,7 +1716,7 @@ export const register: Register = on => {
     // loaded does not add a second.
     polling?.cancel()
     polling = $.clock.every(POLL_MS, () => {
-      void sync($).catch(() => undefined)
+      void inTurn(() => poll($)).catch(() => undefined)
     })
     void $.ui.open({ id: PANE, title: 'Backlog' })
 
@@ -1450,6 +1764,15 @@ export const register: Register = on => {
     } catch {
       // The session ends all the same, its claims left standing.
     }
+
+    return next(e)
+  })
+
+  // A prompt is activity: the folder is listed on every poll again, so what
+  // Claude records in the turn, and what other sessions do meanwhile, show
+  // within five seconds.
+  on('prompt.submit', ($, e, next) => {
+    idle = 0
 
     return next(e)
   })
@@ -1986,10 +2309,16 @@ export const register: Register = on => {
         {groups.map(group => (
           <Box marginTop={1} flexDirection="column">
             <Box flexDirection="row" columnGap={1}>
-              <Text bold>{HEADING[group.category]}</Text>
+              <Button
+                plain
+                key={`group:${group.category}`}
+                label={`${held.collapsed.includes(group.category) ? '▸' : '▾'} ${HEADING[group.category]}`}
+                onPress={() => collapse($, group.category)}
+              />
               <Text dimColor>{String(group.members.length)}</Text>
             </Box>
-            {group.members.map(one => {
+            {!held.collapsed.includes(group.category) &&
+              group.members.map(one => {
               const origin = isAll ? ` · ${nameOf(one.project)}` : ''
               const label = `${MARK[one.status]}${one.title}${origin}`
               const badge =

@@ -41,6 +41,8 @@ const posix = (path: string) =>
 // draws on as it starts (the terminal alone unless given).
 type Setting = {
   env?: Record<string, string>
+  /** What the plugin's own store holds as the session starts. */
+  store?: Record<string, unknown>
   hasFolder?: boolean
   notPlaced?: string
   closeRefused?: string
@@ -74,6 +76,20 @@ const world = (
   let pane: UiPane | undefined
   const clock = mock.clock(on, { now: 1_700_000_000_000 })
   mock.env(on, setting.env ?? { HOME: '/home/t' })
+  // The plugin's own store, as the engine keeps it across sessions.
+  const store = new Map<string, unknown>(Object.entries(setting.store ?? {}))
+  on('store.get', ($, e) => ({ value: store.get(e.key) }))
+  on('store.set', ($, e) => {
+    store.set(e.key, e.value)
+
+    return { value: undefined }
+  })
+  on('store.delete', ($, e) => {
+    store.delete(e.key)
+
+    return { value: undefined }
+  })
+  on('store.keys', () => ({ value: [...store.keys()] }))
   // The session's root as the host answers it now: `/cd` moves it.
   let here = root
   // How many of the next listings fail.
@@ -94,7 +110,11 @@ const world = (
       files.has(posix(e.path)) ||
       [...files.keys()].some(path => path.startsWith(`${posix(e.path)}/`)),
   }))
+  // When the folder was listed, each time.
+  const listings: number[] = []
   on('fs.list', ($, e) => {
+    listings.push(clock.now())
+
     if (failing > 0) {
       failing -= 1
       throw new Error('EIO: the disk is unavailable')
@@ -148,6 +168,33 @@ const world = (
     written.set(posix(e.path), clock.now())
 
     return { value: undefined }
+  })
+  // Each removal command a compaction ran, its argument vector; and how many of
+  // the next removals the host refuses.
+  const removals: string[][] = []
+  let unremovable = 0
+  on('process.run', ($, e) => {
+    removals.push([...e.argv])
+    const ended = {
+      stdout: '',
+      stderr: '',
+      isStdoutTruncated: false,
+      isStderrTruncated: false,
+    }
+
+    if (unremovable > 0) {
+      unremovable -= 1
+
+      return { value: { ...ended, exitCode: 1, stderr: 'Access is denied.' } }
+    }
+
+    // `rm -f <paths>`, or `cmd /c del /f /q <paths>` spelt with backslashes.
+    for (const path of e.argv.slice(e.argv[0] === 'rm' ? 2 : 5)) {
+      files.delete(posix(path))
+      written.delete(posix(path))
+    }
+
+    return { value: { ...ended, exitCode: 0 } }
   })
   on('session.root', () => ({ value: here }))
   on('session.id', () => ({ value: 'session-1' }))
@@ -299,6 +346,12 @@ const world = (
     },
     cd: (path: string) => {
       here = path
+    },
+    removals,
+    listings,
+    store,
+    failRemovals: (times: number) => {
+      unremovable = times
     },
     failListing: (times: number) => {
       failing = times
@@ -1313,7 +1366,7 @@ test('an update can retitle an item and move it to another category', async ($, 
   await call($, 'add', { items: [DEFECT] })
   const id = ids()[0] ?? ''
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect(await ui.find({ type: 'Text', text: 'Defects' })).toBeDefined()
+  expect(await ui.find({ key: 'group:defect' })).toBeDefined()
 
   const updated = await call($, 'update', {
     id,
@@ -1322,8 +1375,8 @@ test('an update can retitle an item and move it to another category', async ($, 
   })
 
   expect(String(updated.result)).toBe(`Updated ${id}: open, high priority.`)
-  expect(await ui.find({ type: 'Text', text: 'Defects' })).toBeUndefined()
-  expect(await ui.find({ type: 'Text', text: 'Issues' })).toBeDefined()
+  expect(await ui.find({ key: 'group:defect' })).toBeUndefined()
+  expect(await ui.find({ key: 'group:issue' })).toBeDefined()
   expect(await rows(ui)).toEqual(['Retry loop spins the CPU'])
   await ui.unmount()
 })
@@ -3445,7 +3498,7 @@ test('recording an open item again under another category moves it there, with t
   const id = ids()[0] ?? ''
 
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect(await ui.find({ type: 'Text', text: 'Defects' })).toBeDefined()
+  expect(await ui.find({ key: 'group:defect' })).toBeDefined()
 
   const again = await call($, 'add', {
     items: [
@@ -3465,8 +3518,8 @@ test('recording an open item again under another category moves it there, with t
   expect(await full($, id)).toMatch(
     `Backlog item ${id} (decision, high priority, open): Retry loop never backs off`,
   )
-  expect(await ui.find({ type: 'Text', text: 'Defects' })).toBeUndefined()
-  expect(await ui.find({ type: 'Text', text: 'Decisions' })).toBeDefined()
+  expect(await ui.find({ key: 'group:defect' })).toBeUndefined()
+  expect(await ui.find({ key: 'group:decision' })).toBeDefined()
 
   // A decision's actions, and no Fix now beside its options.
   await ui.press({ key: `open:${id}` })
@@ -3862,4 +3915,264 @@ test('a change to an item leaves the ids in state alone, and an item added write
   await clock.advance(5000)
   expect(writes).toContain('items')
   expect(writes).not.toContain('ids')
+})
+
+const HOUR = 60 * MINUTE
+
+// A closed item of three records another session wrote at `at`: recorded,
+// noted, then done.
+const closedAt = (
+  held: ReturnType<typeof world>,
+  id: string,
+  title: string,
+  at: number,
+) => {
+  held.elsewhere({ id, set: recorded(title), at })
+  held.elsewhere({ id, note: 'Looked into it.', at: at + 1 })
+  held.elsewhere({
+    id,
+    set: { status: 'done', resolution: 'Fixed.' },
+    at: at + 2,
+  })
+}
+
+// The one record file of `id`, parsed; the test fails here with any other count.
+const soleRecord = (held: ReturnType<typeof world>, id: string) => {
+  const paths = held.filesOf(id)
+  expect(paths).toHaveLength(1)
+
+  return JSON.parse(held.files.get(paths[0] ?? '') ?? '{}') as Record<
+    string,
+    unknown
+  >
+}
+
+test('a closed item at rest for an hour is compacted into one file that reads the same, and an open or recent one is left alone', async ($, on) => {
+  const held = world(on)
+  const { clock, filesOf, removals, put } = held
+  const then = clock.now() - 2 * HOUR
+  closedAt(held, 'cl01cl01', 'Closed long ago', then)
+  closedAt(held, 'cl02cl02', 'Closed just now', clock.now() - 5 * MINUTE)
+  held.elsewhere({ id: 'op03op03', set: recorded('Still open'), at: then })
+  held.elsewhere({ id: 'op03op03', note: 'A note.', at: then + 1 })
+  // The first version's whole file, closed by a record beside it.
+  put(
+    'lg04.json',
+    JSON.stringify({
+      id: 'lg04',
+      ...recorded('Kept whole once'),
+      detail: 'Old form.',
+      options: [],
+      recommendation: '',
+      resolution: '',
+      sessionId: 'session-0',
+      createdAt: then - HOUR,
+      updatedAt: then - HOUR,
+    }),
+  )
+  held.elsewhere({ id: 'lg04', set: { status: 'dismissed' }, at: then })
+  await $.session.start(start)
+  const before = await full($, 'cl01cl01')
+  const beforeOld = await full($, 'lg04')
+  expect(filesOf('cl01cl01')).toHaveLength(3)
+
+  await clock.advance(5000)
+
+  expect(filesOf('cl02cl02')).toHaveLength(3)
+  expect(filesOf('op03op03')).toHaveLength(2)
+  expect(await full($, 'cl01cl01')).toBe(before)
+  expect(await full($, 'lg04')).toBe(beforeOld)
+  const whole = soleRecord(held, 'cl01cl01')
+  expect(whole.at).toBe(then + 2)
+  expect(whole.createdAt).toBe(then)
+  expect(whole.notes).toEqual([{ at: then + 1, text: 'Looked into it.' }])
+  expect(whole.folds).toHaveLength(3)
+  const set = whole.set as Record<string, unknown>
+  expect(set.title).toBe('Closed long ago')
+  expect(set.status).toBe('done')
+  expect(set.resolution).toBe('Fixed.')
+  const old = soleRecord(held, 'lg04')
+  expect(old.createdAt).toBe(then - HOUR)
+  expect(old.folds).toContain('lg04.json')
+  expect(filesOf('lg04')[0]).not.toBe(`${DIR}/lg04.json`)
+  // One command removed the files of both.
+  expect(removals).toHaveLength(1)
+  expect(removals[0]?.slice(0, 2)).toEqual(['rm', '-f'])
+  expect(removals[0]).toHaveLength(2 + 3 + 2)
+
+  // Nothing is left to compact: the next poll runs no command.
+  await clock.advance(5000)
+  expect(removals).toHaveLength(1)
+})
+
+test('a session that sees a compacted record beside the files it replaces folds the item once, and a change made at that moment folds after it', async ($, on) => {
+  const { put, clock } = world(on)
+  const id = 'rc01rc01'
+  const then = clock.now() - 2 * HOUR
+  const day = new Date(then).toISOString().slice(0, 10)
+  const plain = (name: string, at: number, set: object, note = '') =>
+    put(
+      `${id}.${name}.json`,
+      JSON.stringify({ id, at, sessionId: 'session-2', set, note }),
+    )
+  plain('a.one', then, recorded('Raced'))
+  plain('b.two', then + 1, {}, 'Looked into it.')
+  plain('c.three', then + 2, { status: 'done', resolution: 'Fixed.' })
+  put(
+    `${id}.c.whole.json`,
+    JSON.stringify({
+      id,
+      at: then + 2,
+      sessionId: 'session-2',
+      set: { ...recorded('Raced'), status: 'done', resolution: 'Fixed.' },
+      note: '',
+      notes: [{ at: then + 1, text: 'Looked into it.' }],
+      createdAt: then,
+      folds: [`${id}.a.one.json`, `${id}.b.two.json`, `${id}.c.three.json`],
+    }),
+  )
+  // Reopened by a third session at the moment of the last folded record,
+  // which the compaction did not see.
+  put(
+    `${id}.c.later.json`,
+    JSON.stringify({
+      id,
+      at: then + 2,
+      sessionId: 'session-3',
+      set: { status: 'open' },
+      note: 'Not fixed after all.',
+    }),
+  )
+  await $.session.start(start)
+
+  expect(await full($, id)).toBe(
+    [
+      `Backlog item ${id} (issue, low priority, open): Raced`,
+      'Recorded in /work/app.',
+      'Resolution: Fixed.',
+      `Note, ${day}: Looked into it.`,
+      `Note, ${day}: Not fixed after all.`,
+    ].join('\n\n'),
+  )
+})
+
+test('a compaction whose removal the host refuses is not written again, and the files go once the wait is over', async ($, on) => {
+  const held = world(on)
+  const { clock, filesOf, removals, failRemovals } = held
+  closedAt(held, 'cl01cl01', 'Closed long ago', clock.now() - 2 * HOUR)
+  await $.session.start(start)
+  const before = await full($, 'cl01cl01')
+  failRemovals(1)
+
+  await clock.advance(5000)
+  // The compacted file stands beside the three it replaces.
+  expect(filesOf('cl01cl01')).toHaveLength(4)
+  expect(await full($, 'cl01cl01')).toBe(before)
+  expect(removals).toHaveLength(1)
+
+  await clock.advance(5 * MINUTE)
+  expect(filesOf('cl01cl01')).toHaveLength(4)
+  expect(removals).toHaveLength(1)
+
+  // The wait over, the next poll that lists the folder (one in thirty
+  // seconds, the session being idle) removes them.
+  await clock.advance(5 * MINUTE + 30_000)
+  expect(filesOf('cl01cl01')).toHaveLength(1)
+  expect(await full($, 'cl01cl01')).toBe(before)
+  expect(removals).toHaveLength(2)
+})
+
+test('on Windows the records a compaction replaced are removed with del, their paths spelt with backslashes', async ($, on) => {
+  const held = world(on, '/work/app', 'enter', {
+    env: { HOME: '/home/t', OS: 'Windows_NT' },
+  })
+  const { clock, filesOf, removals } = held
+  closedAt(held, 'cl01cl01', 'Closed long ago', clock.now() - 2 * HOUR)
+  await $.session.start(start)
+
+  await clock.advance(5000)
+  expect(filesOf('cl01cl01')).toHaveLength(1)
+  expect(removals[0]?.slice(0, 5)).toEqual(['cmd', '/c', 'del', '/f', '/q'])
+  expect(removals[0]?.[5]).toMatch(/^\\home\\t\\\.claude\\backlog\\items\\cl01cl01\./)
+})
+
+test('after a minute with nothing new the folder is listed every thirty seconds, and a prompt or a change brings every poll back', async ($, on) => {
+  const { clock, elsewhere, listings, toasts } = world(on)
+  await $.session.start(start)
+  const started = clock.now()
+  // The start's own listing, then one a poll for a minute.
+  expect(listings).toHaveLength(1)
+  await clock.advance(MINUTE)
+  expect(listings).toHaveLength(13)
+
+  // Then one every thirty seconds.
+  await clock.advance(MINUTE)
+  expect(listings).toHaveLength(15)
+  expect(listings.slice(13)).toEqual([started + 90_000, started + 120_000])
+
+  // An item another session writes waits for the next slow listing, and its
+  // arrival brings the five-second poll back.
+  elsewhere({ id: 'id01id01', set: recorded('Idle arrival') })
+  await clock.advance(25_000)
+  expect(toasts).toHaveLength(0)
+  await clock.advance(5000)
+  expect(toasts).toHaveLength(1)
+  await clock.advance(10_000)
+  expect(listings).toHaveLength(18)
+
+  // Idle again after a minute; a prompt brings every poll back at once.
+  await clock.advance(MINUTE + 30_000)
+  const before = listings.length
+  await clock.advance(10_000)
+  expect(listings.length).toBe(before)
+  await $.prompt.submit({
+    text: 'Carry on.',
+    wait: false,
+    origin: { kind: 'composer' },
+  })
+  await clock.advance(10_000)
+  expect(listings.length).toBe(before + 2)
+})
+
+test('pressing a heading folds its section to the heading and count, pressing it again unfolds it, and the choice is kept for the next session', async ($, on) => {
+  const { store } = world(on)
+  await $.session.start(start)
+  await call($, 'add', { items: [DEFECT, DECISION] })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await rows(ui)).toEqual([
+    'Which queue do we standardise on?',
+    'Retry loop never backs off',
+  ])
+  expect((await ui.find({ key: 'group:defect' }))?.text).toBe('▾ Defects')
+
+  await ui.press({ key: 'group:defect' })
+  expect(await rows(ui)).toEqual(['Which queue do we standardise on?'])
+  expect((await ui.find({ key: 'group:defect' }))?.text).toBe('▸ Defects')
+  // The count stays beside the folded heading.
+  expect(
+    await ui.find({ type: 'Text', text: '1' }),
+  ).toBeDefined()
+  expect(store.get('collapsed')).toEqual(['defect'])
+
+  await ui.press({ key: 'group:decision' })
+  expect(await rows(ui)).toEqual([])
+  expect(store.get('collapsed')).toEqual(['decision', 'defect'])
+
+  await ui.press({ key: 'group:defect' })
+  expect(await rows(ui)).toEqual(['Retry loop never backs off'])
+  expect(store.get('collapsed')).toEqual(['decision'])
+  await ui.unmount()
+})
+
+test('a session starts with the sections an earlier one folded, and ignores what is no category', async ($, on) => {
+  world(on, '/work/app', 'enter', {
+    store: { collapsed: ['issue', 'nonsense', 'defect'] },
+  })
+  await $.session.start(start)
+  await call($, 'add', { items: [DEFECT, DECISION] })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+
+  expect(await rows(ui)).toEqual(['Which queue do we standardise on?'])
+  expect((await ui.find({ key: 'group:defect' }))?.text).toBe('▸ Defects')
+  await ui.unmount()
 })

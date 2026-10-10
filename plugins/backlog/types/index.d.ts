@@ -66,6 +66,16 @@ export type BacklogChange = {
   set: Partial<BacklogFields>
   /** Appended to the item's notes; '' for none. */
   note: string
+  /**
+   * On a record that compacts a closed item: the files it replaces, which
+   * apply no more while it stands; the item's notes whole, in place of those
+   * the replaced records appended; and when the item was first recorded. Its
+   * `at` is the last replaced record's, so a change made since folds after
+   * it. Absent on a plain change.
+   */
+  folds?: string[]
+  notes?: BacklogNote[]
+  createdAt?: number
 }
 
 export type BacklogView = {
@@ -73,6 +83,8 @@ export type BacklogView = {
   selected: string | null
   scope: 'project' | 'all'
   showClosed: boolean
+  /** The categories whose section the list shows folded to its heading. */
+  collapsed: BacklogCategory[]
 }
 
 declare module 'claude-code' {

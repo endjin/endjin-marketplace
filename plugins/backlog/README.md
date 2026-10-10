@@ -12,7 +12,7 @@ by priority, with a detail view where you decide, direct or dismiss each one.
 | Piece | What it does |
 | --- | --- |
 | `/backlog` | Opens and focuses the pane |
-| Backlog pane | Open items grouped as Decisions, Defects, Issues and Tasks, each sorted critical to low |
+| Backlog pane | Open items grouped as Decisions, Defects, Issues and Tasks, each sorted critical to low; press a heading to fold its section to the heading and its count, or to unfold it, and the choice is kept across sessions |
 | Detail view | The item's full context, Claude's recommendation, its options, and the actions below |
 | Row above the prompt | `backlog: 4 open, » 1 in progress, ● 2 new, 1 to decide` for the current project, on the terminal and desktop, while it has open items; press `backlog:` to open or close the pane. VS Code and mobile show the counts on a plain status line instead, also when they attach to a terminal session |
 | Ids in Claude's replies | On the desktop and in the fullscreen terminal, an item's id is a link that opens the pane on that item |
@@ -103,7 +103,10 @@ that names one is drawn again when the ids change, so a link to an item that has
 
 The backlog is a folder of change records, `~/.claude/backlog/items/` (under `CLAUDE_CONFIG_DIR`
 when that is set). Every session with the plugin enabled reads and writes that folder, re-reads
-it every five seconds, and shows a toast when another session adds an item. When none of
+it every five seconds, and shows a toast when another session adds an item. After a minute of
+polls that find nothing new, the folder is re-read every thirty seconds instead, until a re-read
+finds a change, the session writes, or you send a prompt; the marks for new items and for the
+age of a claim still move on the five-second poll, which reads no file for them. When none of
 `CLAUDE_CONFIG_DIR`, `USERPROFILE` and `HOME` is set, an empty value counting as unset, there is
 no folder: the session logs why, and Claude's calls are refused, saying nothing was recorded.
 The same refusal answers a call when the folder cannot be read or written. An `add` of several
@@ -115,6 +118,14 @@ says which fields it sets and which note it appends. A file is written once and 
 An item is its records applied in time order. So two sessions that change the same item never
 overwrite each other: a note from one and a status from another both stand, and when both set
 the same field the later one wins.
+
+The folder is kept small by compaction. A closed item that has rested for an hour has its records
+folded into one file, which names the files it replaces, and those are removed; a session that
+sees both folds the item once. A change made meanwhile, which the compacted file does not name,
+still applies after it. Three items are compacted a poll, the compacted file is written before
+anything is removed, and a removal the file system refuses is tried again ten minutes later. The
+removal runs `rm -f`, or `del` on Windows, since the engine's own file calls cannot remove a
+file; a host without either leaves the files in place, read as before.
 
 The pane lists the current project's items; **All projects** shows the rest. An item from
 another project says so in its detail view, because acting on it runs in the session you are in,
