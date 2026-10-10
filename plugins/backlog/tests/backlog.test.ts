@@ -4176,3 +4176,39 @@ test('a session starts with the sections an earlier one folded, and ignores what
   expect((await ui.find({ key: 'group:defect' }))?.text).toBe('▸ Defects')
   await ui.unmount()
 })
+
+test('a view an earlier version of the code wrote, with no folded sections, still draws the list and folds', async ($, on) => {
+  // A reload of the code keeps the view the earlier version wrote, which has
+  // no `collapsed`: here the host is made to hold such a view by cutting
+  // the field from the write the start makes.
+  let isStarting = true
+  const { store } = world(on, '/work/app', 'enter', {
+    store: { collapsed: ['decision'] },
+  })
+  on('state.set', ($, e, next) => {
+    if (isStarting && e.plugin === 'backlog' && e.key === 'view') {
+      const { collapsed, ...older } = e.value as Record<string, unknown>
+
+      return next({ ...e, value: older as typeof e.value })
+    }
+
+    return next(e)
+  })
+  await $.session.start(start)
+  isStarting = false
+  await call($, 'add', { items: [DEFECT, DECISION] })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+
+  // Nothing folded, as the view the host holds says.
+  expect(await rows(ui)).toEqual([
+    'Which queue do we standardise on?',
+    'Retry loop never backs off',
+  ])
+  expect((await ui.find({ key: 'group:defect' }))?.text).toBe('▾ Defects')
+
+  await ui.press({ key: 'group:defect' })
+  expect(await rows(ui)).toEqual(['Which queue do we standardise on?'])
+  expect((await ui.find({ key: 'group:defect' }))?.text).toBe('▸ Defects')
+  expect(store.get('collapsed')).toEqual(['defect'])
+  await ui.unmount()
+})

@@ -126,17 +126,23 @@ const toCategories = (raw: unknown): BacklogCategory[] =>
   )
 
 // Folds a section of the list to its heading, or unfolds it, and remembers
-// the choice past the session.
+// the choice past the session. The view a session holds may be one an earlier
+// version of this code wrote, which a reload keeps whole: the list of folded
+// sections is read through `toCategories`, never trusted to be there.
 const collapse = async (
   $: EngineInterface,
   category: BacklogCategory,
 ): Promise<void> => {
-  const held = await update($, view, one => ({
-    ...one,
-    collapsed: one.collapsed.includes(category)
-      ? one.collapsed.filter(other => other !== category)
-      : toCategories([...one.collapsed, category]),
-  }))
+  const held = await update($, view, one => {
+    const collapsed = toCategories(one.collapsed)
+
+    return {
+      ...one,
+      collapsed: collapsed.includes(category)
+        ? collapsed.filter(other => other !== category)
+        : toCategories([...collapsed, category]),
+    }
+  })
 
   try {
     await $.store.set(COLLAPSED, held.collapsed)
@@ -2041,6 +2047,9 @@ export const register: Register = on => {
     const Input = 'Input' in table ? table.Input : undefined
     const all = await read($, items)
     const held = await read($, view)
+    // Read as `collapse` reads it: a view kept across a reload of this code
+    // may predate the field, and a drawing that throws leaves the pane blank.
+    const collapsed = toCategories(held.collapsed)
     const here = await read($, project)
     const freshIds = new Set(await read($, fresh))
     const ages = await read($, aged)
@@ -2312,12 +2321,12 @@ export const register: Register = on => {
               <Button
                 plain
                 key={`group:${group.category}`}
-                label={`${held.collapsed.includes(group.category) ? '▸' : '▾'} ${HEADING[group.category]}`}
+                label={`${collapsed.includes(group.category) ? '▸' : '▾'} ${HEADING[group.category]}`}
                 onPress={() => collapse($, group.category)}
               />
               <Text dimColor>{String(group.members.length)}</Text>
             </Box>
-            {!held.collapsed.includes(group.category) &&
+            {!collapsed.includes(group.category) &&
               group.members.map(one => {
               const origin = isAll ? ` · ${nameOf(one.project)}` : ''
               const label = `${MARK[one.status]}${one.title}${origin}`
