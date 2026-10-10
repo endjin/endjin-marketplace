@@ -95,6 +95,10 @@ mobile, ids stay plain text: a click there would open a browser, not the pane. A
 a code block or a code span, or inside a link Claude already wrote, is left as it is. An item that
 has left the backlog since the reply was drawn says so in a toast.
 
+A reply that names no item is left as the engine draws it, at no cost beyond a scan of its words,
+and is not drawn again when an item is recorded: an id is named once its item exists. A reply
+that names one is drawn again when the ids change, so a link to an item that has left loses it.
+
 ## One backlog across sessions
 
 The backlog is a folder of change records, `~/.claude/backlog/items/` (under `CLAUDE_CONFIG_DIR`

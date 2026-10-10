@@ -5,6 +5,7 @@ import type {
   Register,
   RenderSurface,
   TextProps,
+  Timer,
 } from 'claude-code'
 
 import type {
@@ -107,9 +108,18 @@ const ids = atom({ plugin: 'backlog', key: 'ids' } as const, [])
 // time and size, '' for a file this session just wrote.
 const records = new Map<string, { stamp: string; change: BacklogChange }>()
 const unreadable = new Map<string, string>()
+// The items as `records` fold, kept until a record is read, written or
+// dropped: a poll that finds nothing changed folds nothing.
+let folded: BacklogItem[] | undefined
+// The ids of every item as of the last publish, read by the replies that
+// link ids without a trip to the host; empty until the folder was first read.
+let knownIds: ReadonlySet<string> = new Set()
+// The folder's path once resolved; the environment does not change in-session.
+let home = ''
 let hasLoaded = false
 let lastAt = 0
 let queue: Promise<unknown> = Promise.resolve()
+let polling: Timer | undefined
 
 // Reads and writes of the folder run one at a time within this session.
 // Across sessions nothing needs a lock: every write is a new file.
@@ -242,8 +252,15 @@ const toChange = (raw: unknown): BacklogChange | undefined => {
 
 // Every item, each the fold of its records in `at` order. Records set only
 // the fields they name, so a note from one session and a status from another
-// both stand, whichever was written first.
+// both stand, whichever was written first. Folded once per change to
+// `records`; the callers never alter what they are given.
 const fold = (): BacklogItem[] => {
+  folded ??= foldAll()
+
+  return folded
+}
+
+const foldAll = (): BacklogItem[] => {
   const ordered = [...records.entries()].sort(
     ([nameA, a], [nameB, b]) =>
       a.change.at - b.change.at || (nameA < nameB ? -1 : 1),
@@ -443,10 +460,22 @@ const chunks = (text: string, limit = CHUNK): string[] => {
   return parts.filter(part => part.trim() !== '')
 }
 
-// Whether a text may name an item: a run of 4 to 12 of an id's characters
-// standing alone. A cheap first look: it spares the state read and the scan
-// only for a block with no such run, which most prose has.
-const CANDIDATE = /(?<![a-z0-9])[a-z0-9]{4,12}(?![a-z0-9])/
+// The runs of 4 to 12 of an id's characters standing alone in a text: what
+// may name an item. Most words of prose are one.
+const CANDIDATES = /(?<![a-z0-9])[a-z0-9]{4,12}(?![a-z0-9])/g
+
+// Whether `text` names an item of `known` anywhere, code included: a cheap
+// first look that spares a block naming none, which most are, the state read
+// that would subscribe it to every change of the ids, and the scan.
+const names = (text: string, known: ReadonlySet<string>): boolean => {
+  for (const [run] of text.matchAll(CANDIDATES)) {
+    if (known.has(run)) {
+      return true
+    }
+  }
+
+  return false
+}
 
 // What a line's scan steps over whole, and the ids it may link: an inline code
 // span (its opening run not part of a longer one), a link or image already
@@ -529,6 +558,10 @@ const linkedPieces = (
 // there is no backlog: a guess, such as `/.claude`, would be a folder no other
 // session reads.
 const folder = async ($: EngineInterface): Promise<string> => {
+  if (home !== '') {
+    return home
+  }
+
   const places = [
     [await $.env.get('CLAUDE_CONFIG_DIR'), 'backlog/items'],
     [await $.env.get('USERPROFILE'), '.claude/backlog/items'],
@@ -537,7 +570,9 @@ const folder = async ($: EngineInterface): Promise<string> => {
 
   for (const [base, under] of places) {
     if (base !== undefined && base !== '') {
-      return `${slash(base)}/${under}`
+      home = `${slash(base)}/${under}`
+
+      return home
     }
   }
 
@@ -598,18 +633,12 @@ const place = async ($: EngineInterface): Promise<boolean> => {
   return true
 }
 
-// The ids of the items new as of now, in a stable order.
-const freshOf = async (
-  $: EngineInterface,
-  all: BacklogItem[],
-): Promise<string[]> => {
-  const now = await $.clock.now()
-
-  return all
+// The ids of the items new as of `now`, in a stable order.
+const freshOf = (all: BacklogItem[], now: number): string[] =>
+  all
     .filter(one => isFresh(one, now))
     .map(one => one.id)
     .sort()
-}
 
 // Whether the host already holds `marked` as the new items. Compared with the
 // host, not a copy here: a resumed session loses what it wrote while starting.
@@ -620,19 +649,13 @@ const isFreshLevel = async (
 
 // How many whole days each item in progress has been so, by id in a stable
 // order; an item under one day has no entry.
-const agedOf = async (
-  $: EngineInterface,
-  all: BacklogItem[],
-): Promise<Record<string, number>> => {
-  const now = await $.clock.now()
-
-  return Object.fromEntries(
+const agedOf = (all: BacklogItem[], now: number): Record<string, number> =>
+  Object.fromEntries(
     all
       .map(one => [one.id, daysHeld(one, now)] as const)
       .filter(([, claimed]) => claimed > 0)
       .sort(([a], [b]) => (a < b ? -1 : 1)),
   )
-}
 
 // Whether the host already holds `ages`, compared with the host as the new
 // items are.
@@ -716,23 +739,25 @@ const flag = async ($: EngineInterface): Promise<void> => {
 
 const publish = async ($: EngineInterface): Promise<BacklogItem[]> => {
   const all = fold()
+  const now = await $.clock.now()
   await update($, items, () => all)
 
   // Written only when an id appears or leaves, so a change to an item does
   // not redraw every reply that links ids.
   const every = all.map(one => one.id).sort()
+  knownIds = new Set(every)
 
   if ((await read($, ids)).join(' ') !== every.join(' ')) {
     await update($, ids, () => every)
   }
 
-  const marked = await freshOf($, all)
+  const marked = freshOf(all, now)
 
   if (!(await isFreshLevel($, marked))) {
     await update($, fresh, () => marked)
   }
 
-  const ages = await agedOf($, all)
+  const ages = agedOf(all, now)
 
   if (!(await isAgedLevel($, ages))) {
     await update($, aged, () => ages)
@@ -771,6 +796,7 @@ const append = async (
     `${JSON.stringify(change, null, 2)}\n`,
   )
   records.set(name, { stamp: '', change })
+  folded = undefined
 }
 
 // Brings `records` level with the folder, which every session writes to.
@@ -807,12 +833,14 @@ const level = async ($: EngineInterface): Promise<void> => {
 
     unreadable.delete(entry.name)
     records.set(entry.name, { stamp, change })
+    folded = undefined
     hasChanged = true
   }
 
   for (const name of [...records.keys()]) {
     if (!names.has(name)) {
       records.delete(name)
+      folded = undefined
       hasChanged = true
     }
   }
@@ -822,20 +850,24 @@ const level = async ($: EngineInterface): Promise<void> => {
   }
 
   // The host holds the items for the session. A resumed session starts with
-  // none, though the records here are level with the folder.
-  if (!hasChanged && (await read($, items)).length !== before.size) {
+  // none, though the records here are level with the folder. The ids, one per
+  // item, are the cheap value to count.
+  if (!hasChanged && (await read($, ids)).length !== before.size) {
     hasChanged = true
   }
 
   // An item stops being new with no record written: its mark, and the counts,
-  // go on the first poll past its ten minutes.
-  if (!hasChanged && !(await isFreshLevel($, await freshOf($, fold())))) {
-    hasChanged = true
-  }
+  // go on the first poll past its ten minutes. A claim's age moves the same
+  // way, on the first poll past each whole day.
+  if (!hasChanged) {
+    const now = await $.clock.now()
 
-  // A claim's age moves the same way, on the first poll past each whole day.
-  if (!hasChanged && !(await isAgedLevel($, await agedOf($, fold())))) {
-    hasChanged = true
+    if (
+      !(await isFreshLevel($, freshOf(fold(), now))) ||
+      !(await isAgedLevel($, agedOf(fold(), now)))
+    ) {
+      hasChanged = true
+    }
   }
 
   if (hasChanged) {
@@ -1366,7 +1398,10 @@ export const register: Register = on => {
       $.ui.log(`backlog: could not read the backlog folder: ${reason(error)}`)
     }
 
-    $.clock.every(POLL_MS, () => {
+    // One poll at a time: a session that starts again with the module still
+    // loaded does not add a second.
+    polling?.cancel()
+    polling = $.clock.every(POLL_MS, () => {
       void sync($).catch(() => undefined)
     })
     void $.ui.open({ id: PANE, title: 'Backlog' })
@@ -1497,17 +1532,29 @@ export const register: Register = on => {
       e.surface === 'desktop' ||
       (e.surface === 'terminal' && e.viewport?.isFullscreen === true)
 
-    if (
-      !isPressable ||
-      e.props.isSummary === true ||
-      !CANDIDATE.test(e.props.text)
-    ) {
+    if (!isPressable || e.props.isSummary === true) {
       return next(e)
     }
 
     let tree
     try {
-      const known = new Set(await read($, ids))
+      // A block naming no item is left to the engine without a trip to the
+      // host, and is not drawn again when an id appears or leaves: an id is
+      // named once the item is recorded. One naming an item reads the ids, so
+      // it is drawn again when they change. Until the folder is first read the
+      // ids are the host's alone, and every block reads them.
+      let known: ReadonlySet<string> = hasLoaded
+        ? knownIds
+        : new Set(await read($, ids))
+
+      if (!names(e.props.text, known)) {
+        return next(e)
+      }
+
+      if (hasLoaded) {
+        known = new Set(await read($, ids))
+      }
+
       const linked = linkedPieces(e.props.text, known)
       const length = linked.reduce((sum, piece) => sum + piece.text.length, 0)
 

@@ -3819,6 +3819,27 @@ test('a reply the mod fails to draw is left to the engine', async ($, on) => {
   await ui.unmount()
 })
 
+test('a reply naming no item reads no state once the backlog is read, and one naming an item reads the ids once', async ($, on) => {
+  const reads: string[] = []
+  on('state.get', ($, e, next) => {
+    reads.push(String(e.key))
+
+    return next(e)
+  })
+  const { open } = await three($, on)
+  reads.length = 0
+
+  const plain = await reply($, 'terminal', 'All checks pass on this branch.')
+  expect(await leaves(plain)).toBe(true)
+  expect(reads).toEqual([])
+  await plain.unmount()
+
+  const linked = await reply($, 'terminal', `See ${open}.`)
+  expect(await markdown(linked)).toBeDefined()
+  expect(reads).toEqual(['ids'])
+  await linked.unmount()
+})
+
 test('a change to an item leaves the ids in state alone, and an item added writes them', async ($, on) => {
   const { clock, ids } = world(on)
   const writes: string[] = []
