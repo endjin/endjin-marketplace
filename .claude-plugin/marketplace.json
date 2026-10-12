@@ -31,6 +31,18 @@
       "keywords": ["writing", "technical-writing", "plain-language", "documentation", "inclusive-language"],
       "category": "writing",
       "repository": "https://github.com/endjin/endjin-marketplace"
+    },
+    {
+      "name": "backlog",
+      "source": "./plugins/backlog",
+      "description": "A Claude Code pane that tracks the defects, issues, tasks and decisions your sessions turn up, grouped by category and priority, with a detail view to decide or direct the work",
+      "author": {
+        "name": "endjin"
+      },
+      "license": "MIT",
+      "keywords": ["mod", "pane", "backlog", "todo", "decisions", "triage"],
+      "category": "productivity",
+      "repository": "https://github.com/endjin/endjin-marketplace"
     }
   ],
   "renames": {
