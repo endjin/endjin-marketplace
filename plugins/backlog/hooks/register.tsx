@@ -106,7 +106,7 @@ The person keeps a backlog in a side pane, shared by all their Claude Code sessi
 
 The person reads an item later, away from this conversation, and may act on it from another session. Write its detail to stand alone: what you observed, where (file and line), why it matters. A decision carries its options with their trade-offs and your recommendation.
 
-When you start work on an item that is already on the backlog, call mcp__backlog__update with status "in_progress", so the pane shows it is being worked on. When you fix or settle an item, call mcp__backlog__update with status "done" and a one-line resolution. When you stop work on an item without finishing it, set its status back to "open" with a note saying what is left.`
+When you start work on an item that is already on the backlog, call mcp__backlog__update with status "in_progress", so the pane shows it is being worked on. When you fix or settle an item, call mcp__backlog__update with status "done" and a one-line resolution. When you stop work on an item without finishing it, set its status back to "open" with a note saying what is left. Several items changing at once go in one mcp__backlog__update call, as \`items\`, not one call per item.`
 
 const items = atom({ plugin: 'backlog', key: 'items' } as const, [])
 const view = atom({ plugin: 'backlog', key: 'view' } as const, {
@@ -183,10 +183,39 @@ let compactAfter = 0
 // is not removed again, so a file the host holds on to costs no more commands.
 const swept = new Set<string>()
 
+// Listings of the folder finished so far: a call that waited in line reads
+// whether one finished meanwhile, and takes it as its own.
+let listed = 0
+
+// What a piece of work is told as its turn comes.
+type Turn = {
+  // A listing finished while the work waited: the records are level with
+  // the folder as of after the work was asked for, so it need not list again.
+  isListed: boolean
+}
+
+// The error a piece of work rejects with when its call was given up before
+// its turn came. The hook's handler has answered by then; nothing reads it.
+const abandoned = (): Error =>
+  new Error('the call was given up before its turn came')
+
 // Reads and writes of the folder run one at a time within this session.
 // Across sessions nothing needs a lock: every write is a new file.
-const inTurn = <T,>(work: () => Promise<T>): Promise<T> => {
-  const run = queue.then(work, work)
+//
+// A hook's budget runs while it waits here: the engine stops the clock for
+// a `$` call of the hook's own, not for another call's work. A call whose
+// budget ran out, or whose dispatch the person interrupted, has been answered
+// already, so its work is not run: `signal` is the hook's `next.signal`.
+const inTurn = <T,>(
+  work: (turn: Turn) => Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> => {
+  const before = listed
+  const start = (): Promise<T> =>
+    signal?.aborted === true
+      ? Promise.reject(abandoned())
+      : work({ isListed: listed > before })
+  const run = queue.then(start, start)
   queue = run.catch(() => undefined)
 
   return run
@@ -278,6 +307,50 @@ const toFields = (raw: Record<string, unknown>): Partial<BacklogFields> => {
   }
 
   return set
+}
+
+// What one update asks, as `raw` gives it: the item's id, the fields to set
+// and the note to append; or why the entry is skipped, said with its id
+// where it has one. The note and the title are refused over their limits,
+// never cut.
+const toEdit = (raw: Record<string, unknown>): Edit | { skipped: string } => {
+  const id = oneLine(raw.id, 12)
+
+  if (id === '') {
+    return { skipped: 'an entry with no id' }
+  }
+
+  if (typeof raw.note === 'string' && raw.note.length > NOTE_MAX) {
+    return {
+      skipped: `${id}: its note is ${raw.note.length} characters and the limit is ${NOTE_MAX}`,
+    }
+  }
+
+  const title = oneLine(raw.title, Infinity)
+
+  if (title.length > TITLE_MAX) {
+    return {
+      skipped: `${id}: its title is ${title.length} characters and the limit is ${TITLE_MAX}`,
+    }
+  }
+
+  const note = clean(raw.note, NOTE_MAX)
+  const resolution = clean(raw.resolution, RESOLUTION_MAX)
+  const set = toFields({
+    title: raw.title,
+    status: raw.status,
+    priority: raw.priority,
+    category: raw.category,
+    ...(resolution === '' ? {} : { resolution }),
+  })
+
+  if (note === '' && Object.keys(set).length === 0) {
+    return {
+      skipped: `${id}: nothing to change; give a status, priority, category, title, resolution or note`,
+    }
+  }
+
+  return { id, set, note }
 }
 
 const ID = /^[a-z0-9]{4,12}$/
@@ -979,6 +1052,10 @@ const level = async (
     }
   }
 
+  if (isListing) {
+    listed += 1
+  }
+
   if (await place($)) {
     hasChanged = true
   }
@@ -1022,8 +1099,10 @@ const level = async (
   return hasChanged
 }
 
-const sync = ($: EngineInterface): Promise<void> =>
-  inTurn(() => level($).then(() => undefined))
+// Brings the state level with the folder: lists it, unless a listing finished
+// while the call waited its turn.
+const sync = ($: EngineInterface, signal?: AbortSignal): Promise<void> =>
+  inTurn(turn => level($, !turn.isListed).then(() => undefined), signal)
 
 // One poll: the folder listed, or while idle on every SLOW_EVERY-th poll
 // alone, then the compaction. Runs inside the queue.
@@ -1195,34 +1274,115 @@ const compact = async ($: EngineInterface): Promise<void> => {
   }
 }
 
+// One change asked of an item: the fields to set and a note to append.
+type Edit = { id: string; set: Partial<BacklogFields>; note: string }
+
+// What one change came to: written, and the item as it then stands; or not,
+// as no item has the id, or as its write failed or one before it did.
+type Edited = {
+  id: string
+  item?: BacklogItem
+  isWritten: boolean
+  isMissing: boolean
+}
+
+// Changes items as the folder holds them now, each in order, in one turn:
+// the folder listed once, one record written per change, the state published
+// once. Resolves what each came to, and the reason the first write to fail
+// gave, '' when none: the changes after it are not tried. With nothing written
+// before the failure the call rejects with it.
+const editMany = (
+  $: EngineInterface,
+  edits: readonly Edit[],
+  signal?: AbortSignal,
+): Promise<{ outcomes: Edited[]; failure: string }> =>
+  inTurn(async turn => {
+    await level($, !turn.isListed)
+
+    // An id not among the records may be an item another session recorded
+    // since the listing this call took as its own: listed once, now.
+    if (
+      turn.isListed &&
+      edits.some(one => !fold().some(item => item.id === one.id))
+    ) {
+      await level($)
+    }
+
+    if (signal?.aborted === true) {
+      throw abandoned()
+    }
+
+    const outcomes: Edited[] = []
+    let written = 0
+    let failure = ''
+
+    for (const one of edits) {
+      if (failure !== '') {
+        outcomes.push({ id: one.id, isWritten: false, isMissing: false })
+        continue
+      }
+
+      if (!fold().some(item => item.id === one.id)) {
+        outcomes.push({ id: one.id, isWritten: false, isMissing: true })
+        continue
+      }
+
+      try {
+        await append($, one.id, one.set, one.note)
+        written += 1
+        outcomes.push({ id: one.id, isWritten: true, isMissing: false })
+      } catch (error) {
+        if (written === 0) {
+          throw error
+        }
+
+        failure = reason(error)
+        outcomes.push({ id: one.id, isWritten: false, isMissing: false })
+      }
+    }
+
+    if (written > 0) {
+      const all = await publish($)
+
+      for (const outcome of outcomes) {
+        if (outcome.isWritten) {
+          outcome.item = all.find(item => item.id === outcome.id)
+        }
+      }
+    }
+
+    return { outcomes, failure }
+  }, signal)
+
 // Changes one item as the folder holds it now, and resolves the item as it
 // then stands; undefined when no item has the id.
-const edit = (
+const edit = async (
   $: EngineInterface,
   id: string,
   set: Partial<BacklogFields>,
   note = '',
-): Promise<BacklogItem | undefined> =>
-  inTurn(async () => {
-    await level($)
+  signal?: AbortSignal,
+): Promise<BacklogItem | undefined> => {
+  const { outcomes } = await editMany($, [{ id, set, note }], signal)
 
-    if (!fold().some(one => one.id === id)) {
-      return undefined
-    }
-
-    await append($, id, set, note)
-
-    return (await publish($)).find(one => one.id === id)
-  })
+  return outcomes[0]?.item
+}
 
 const add = (
   $: EngineInterface,
   drafts: readonly unknown[],
+  signal?: AbortSignal,
 ): Promise<{ text: string; recorded: number; hasFailed: boolean }> =>
-  inTurn(async () => {
+  inTurn(async turn => {
     // Level first: an item another session closed since the last poll is no
-    // twin, and one it opened is.
-    await level($)
+    // twin, and one it opened is. A listing that finished while this call
+    // waited is as fresh as the poll's.
+    await level($, !turn.isListed)
+
+    if (signal?.aborted === true) {
+      throw abandoned()
+    }
+
     const here = await read($, project)
     const lines: string[] = []
     let recorded = 0
@@ -1403,7 +1563,7 @@ const add = (
       recorded,
       hasFailed: false,
     }
-  })
+  }, signal)
 
 const describe = (item: BacklogItem): string =>
   [
@@ -1574,6 +1734,25 @@ const ITEM_SCHEMA = {
   required: ['title', 'category', 'priority', 'detail'],
 }
 
+// The fields an update takes, for one item at the top level and for each of
+// several under `items`.
+const UPDATE_FIELDS = {
+  id: { type: 'string' },
+  status: { type: 'string', enum: STATUSES },
+  priority: { type: 'string', enum: PRIORITIES },
+  category: { type: 'string', enum: CATEGORIES },
+  title: { type: 'string', maxLength: TITLE_MAX },
+  note: {
+    type: 'string',
+    maxLength: NOTE_MAX,
+    description: "Markdown appended to the item's notes.",
+  },
+  resolution: {
+    type: 'string',
+    description: 'One line: what was decided, or how it was fixed.',
+  },
+}
+
 // Closes the pane when it is shown, and opens it otherwise: not open, waiting
 // unplaced, or a tab behind another pane. A press is the person asking, so the
 // open places it at any width.
@@ -1668,27 +1847,24 @@ export const register: Register = on => {
     })
     await $.tool.register({
       name: 'update',
-      description:
-        'Updates one backlog item by id: mark it in_progress when you start work on it, done with a resolution once fixed or settled, open again when you stop work on it unfinished, change its priority or category, or append a note with what you learned. Ids come from mcp__backlog__add and mcp__backlog__list.',
+      description: `Updates backlog items by id: mark one in_progress when you start work on it, done with a resolution once fixed or settled, open again when you stop work on it unfinished, change its priority or category, or append a note with what you learned. Give \`id\` and the fields to change for one item, or \`items\` for several: one call for all of them, up to ${BATCH_MAX}, not one call per item. Ids come from mcp__backlog__add and mcp__backlog__list.`,
       inputSchema: {
         type: 'object',
         properties: {
-          id: { type: 'string' },
-          status: { type: 'string', enum: STATUSES },
-          priority: { type: 'string', enum: PRIORITIES },
-          category: { type: 'string', enum: CATEGORIES },
-          title: { type: 'string', maxLength: TITLE_MAX },
-          note: {
-            type: 'string',
-            maxLength: NOTE_MAX,
-            description: "Markdown appended to the item's notes.",
-          },
-          resolution: {
-            type: 'string',
-            description: 'One line: what was decided, or how it was fixed.',
+          ...UPDATE_FIELDS,
+          items: {
+            type: 'array',
+            minItems: 1,
+            maxItems: BATCH_MAX,
+            description:
+              'Several items in one call, each with its id and the fields to change.',
+            items: {
+              type: 'object',
+              properties: UPDATE_FIELDS,
+              required: ['id'],
+            },
           },
         },
-        required: ['id'],
       },
     })
     await $.tool.register({
@@ -1931,7 +2107,7 @@ export const register: Register = on => {
     return tree ?? next(e)
   })
 
-  on('tool.call', { tool: 'mcp__backlog__add' }, async ($, e) => {
+  on('tool.call', { tool: 'mcp__backlog__add' }, async ($, e, next) => {
     if (!Array.isArray(e.items)) {
       return { result: 'Nothing recorded: `items` must be a list of items.' }
     }
@@ -1944,7 +2120,7 @@ export const register: Register = on => {
       }
     }
 
-    const { text, recorded, hasFailed } = await add($, drafts)
+    const { text, recorded, hasFailed } = await add($, drafts, next.signal)
 
     if (recorded > 0) {
       $.ui.toast(
@@ -1955,7 +2131,74 @@ export const register: Register = on => {
     return hasFailed ? { deny: text } : { result: text }
   }).catch(refuse)
 
-  on('tool.call', { tool: 'mcp__backlog__update' }, async ($, e) => {
+  on('tool.call', { tool: 'mcp__backlog__update' }, async ($, e, next) => {
+    if (Array.isArray(e.items)) {
+      const drafts = e.items
+
+      if (drafts.length > BATCH_MAX) {
+        return {
+          deny: `mcp__backlog__update takes at most ${BATCH_MAX} items in one call and got ${drafts.length}. Nothing was changed: send them in batches.`,
+        }
+      }
+
+      if (oneLine(e.id, 12) !== '') {
+        return {
+          deny: 'Give `id` and the fields to change for one item, or `items` for several, not both. Nothing was changed.',
+        }
+      }
+
+      if (drafts.length === 0) {
+        return { result: 'Nothing changed: `items` was empty.' }
+      }
+
+      // One entry refused for its shape is skipped and said so; the rest are
+      // changed, as `add` skips an item it cannot record.
+      const asked = drafts.map(draft => toEdit(record(draft)))
+      const edits = asked.filter(
+        (one): one is Edit => !('skipped' in one),
+      )
+      const { outcomes, failure } =
+        edits.length === 0
+          ? { outcomes: [], failure: '' }
+          : await editMany($, edits, next.signal)
+      const changed = outcomes.filter(one => one.isWritten)
+      const untried = outcomes.filter(one => !one.isWritten && !one.isMissing)
+      // One line per entry, in the order given.
+      const lines: string[] = []
+      let at = 0
+
+      for (const one of asked) {
+        if ('skipped' in one) {
+          lines.push(`- skipped ${one.skipped}`)
+          continue
+        }
+
+        const outcome = outcomes[at]
+        at += 1
+
+        if (outcome?.item !== undefined) {
+          lines.push(
+            `- ${outcome.id}: ${STATUS[outcome.item.status]}, ${outcome.item.priority} priority`,
+          )
+        } else if (outcome?.isMissing === true) {
+          lines.push(`- skipped ${outcome.id}: no backlog item has that id`)
+        }
+      }
+
+      if (failure !== '') {
+        return {
+          deny: `The backlog could not be written: ${failure}. Not changed: ${untried.map(one => one.id).join(', ')}. Send ${untried.length === 1 ? 'it' : 'those'} again; what is listed here needs no resending.\nChanged before the failure:\n${lines.join('\n')}`,
+        }
+      }
+
+      return {
+        result:
+          changed.length === 0
+            ? `Nothing was changed. mcp__backlog__list gives the ids.\n${lines.join('\n')}`
+            : `Updated ${changed.length} ${changed.length === 1 ? 'item' : 'items'}:\n${lines.join('\n')}`,
+      }
+    }
+
     const id = oneLine(e.id, 12)
 
     if (typeof e.note === 'string' && e.note.length > NOTE_MAX) {
@@ -1972,24 +2215,28 @@ export const register: Register = on => {
       }
     }
 
-    const note = clean(e.note, NOTE_MAX)
-    const resolution = clean(e.resolution, RESOLUTION_MAX)
-    const set = toFields({
+    const asked = toEdit({
+      id,
       title: e.title,
       status: e.status,
       priority: e.priority,
       category: e.category,
-      ...(resolution === '' ? {} : { resolution }),
+      resolution: e.resolution,
+      note: e.note,
     })
 
-    if (note === '' && Object.keys(set).length === 0) {
+    if ('skipped' in asked && id !== '') {
       return {
         result:
           'Nothing to change: give a status, priority, category, title, resolution or note.',
       }
     }
 
-    const edited = await edit($, id, set, note)
+    // With no id there is no item to change, whatever else was given.
+    const edited =
+      'skipped' in asked
+        ? undefined
+        : await edit($, id, asked.set, asked.note, next.signal)
 
     return {
       result:
@@ -1999,8 +2246,8 @@ export const register: Register = on => {
     }
   }).catch(refuse)
 
-  on('tool.call', { tool: 'mcp__backlog__list' }, async ($, e) => {
-    await sync($)
+  on('tool.call', { tool: 'mcp__backlog__list' }, async ($, e, next) => {
+    await sync($, next.signal)
     const all = await read($, items)
     const here = await read($, project)
     const freshIds = new Set(await read($, fresh))

@@ -2,6 +2,11 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { ElementQuery, Engine, FoundElement } from 'claude-code/testing'
 import type { On, RenderSurface, RenderViewport, UiPane } from 'claude-code'
 
+// The runtime's own timer, in real time, which the engine's declarations
+// leave out: the mocked clock moves only when a test moves it, and a host
+// slow in real time is what a hook's budget is measured against.
+declare function setTimeout(callback: () => void, ms: number): unknown
+
 const DIR = '/home/t/.claude/backlog/items'
 const PANE = {
   plugin: 'backlog',
@@ -94,6 +99,17 @@ const world = (
   let here = root
   // How many of the next listings fail.
   let failing = 0
+  // While set, every listing waits on it: the host is slow to list the folder.
+  let held: Promise<void> | undefined
+  let release: (() => void) | undefined
+  // How long, in real milliseconds, the host takes over each look at the
+  // folder, each listing and each write: a slow mount.
+  let lag = 0
+  const slowly = async () => {
+    if (lag > 0) {
+      await new Promise<void>(resolve => setTimeout(resolve,lag))
+    }
+  }
   // How many of the next writes the folder takes before it refuses the ones
   // after them, and how many of those it refuses.
   let spared = 0
@@ -104,21 +120,31 @@ const world = (
     clientId: `start-${index}`,
   }))
 
-  on('fs.exists', ($, e) => ({
-    value:
-      (posix(e.path) === DIR && setting.hasFolder !== false) ||
-      files.has(posix(e.path)) ||
-      [...files.keys()].some(path => path.startsWith(`${posix(e.path)}/`)),
-  }))
+  on('fs.exists', async ($, e) => {
+    await slowly()
+
+    return {
+      value:
+        (posix(e.path) === DIR && setting.hasFolder !== false) ||
+        files.has(posix(e.path)) ||
+        [...files.keys()].some(path => path.startsWith(`${posix(e.path)}/`)),
+    }
+  })
   // When the folder was listed, each time.
   const listings: number[] = []
-  on('fs.list', ($, e) => {
+  on('fs.list', async ($, e) => {
     listings.push(clock.now())
 
     if (failing > 0) {
       failing -= 1
       throw new Error('EIO: the disk is unavailable')
     }
+
+    if (held !== undefined) {
+      await held
+    }
+
+    await slowly()
 
     const inside = (path: string) => path.startsWith(`${posix(e.path)}/`)
 
@@ -151,7 +177,9 @@ const world = (
 
     return { value: text }
   })
-  on('fs.write', ($, e) => {
+  on('fs.write', async ($, e) => {
+    await slowly()
+
     if (spared > 0) {
       spared -= 1
     } else if (refusing > 0) {
@@ -355,6 +383,24 @@ const world = (
     },
     failListing: (times: number) => {
       failing = times
+    },
+    // Every listing from now waits until `releaseListings`, as on a slow
+    // mount; the listings begun meanwhile are counted as they begin.
+    holdListings: () => {
+      held = new Promise<void>(resolve => {
+        release = resolve
+      })
+    },
+    releaseListings: () => {
+      release?.()
+      held = undefined
+      release = undefined
+    },
+    // Each look at the folder, listing and write from now takes `ms` of real
+    // time, as on a slow mount; 0 makes the host quick again. Kept under a
+    // hook's budget: a hook of this world's that outran it would be skipped.
+    slowHost: (ms: number) => {
+      lag = ms
     },
     // The folder takes the next `after` writes, then refuses `times` of them.
     refuseWrites: (times: number, after = 0) => {
@@ -4211,4 +4257,211 @@ test('a view an earlier version of the code wrote, with no folded sections, stil
   expect((await ui.find({ key: 'group:defect' }))?.text).toBe('▸ Defects')
   expect(store.get('collapsed')).toEqual(['defect'])
   await ui.unmount()
+})
+
+// Waits, in real time, until `check` holds: for a call to reach the host.
+const until = async (check: () => boolean) => {
+  while (!check()) {
+    await new Promise<void>(resolve => setTimeout(resolve,5))
+  }
+}
+
+test('an update of several items lists the folder once, writes one record each, and answers for each in order', async ($, on) => {
+  const { files, ids, listings, filesOf } = world(on)
+  await $.session.start(start)
+  await call($, 'add', {
+    items: [DEFECT, DECISION, { ...DEFECT, title: 'Third' }],
+  })
+  const [a = '', b = '', c = ''] = ids()
+  const written = files.size
+  const before = listings.length
+
+  const updated = await call($, 'update', {
+    items: [
+      { id: a, status: 'in_progress' },
+      { id: b, status: 'done', resolution: 'Keep SQS.' },
+      { id: c, priority: 'low', note: 'Seen twice today.' },
+    ],
+  })
+
+  expect(String(updated.result)).toBe(
+    [
+      'Updated 3 items:',
+      `- ${a}: in progress, high priority`,
+      `- ${b}: done, critical priority`,
+      `- ${c}: open, low priority`,
+    ].join('\n'),
+  )
+  expect(listings.length).toBe(before + 1)
+  expect(files.size).toBe(written + 3)
+  expect(JSON.parse(files.get(filesOf(c).at(-1) ?? '') ?? '')).toMatchObject({
+    set: { priority: 'low' },
+    note: 'Seen twice today.',
+  })
+  expect(await full($, b)).toMatch('Resolution: Keep SQS.')
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await markOf(ui, a)).toBe('working')
+  expect(await rows(ui)).toEqual(['Retry loop never backs off', 'Third'])
+  await ui.unmount()
+})
+
+test('an update of several items skips an entry it cannot take, says why in its place, and changes the rest', async ($, on) => {
+  const { files, ids } = world(on)
+  await $.session.start(start)
+  await call($, 'add', {
+    items: [DEFECT, DECISION, { ...DEFECT, title: 'Third' }],
+  })
+  const [a = '', b = '', c = ''] = ids()
+  const written = files.size
+
+  const updated = await call($, 'update', {
+    items: [
+      { id: 'zz00zz00', status: 'done' },
+      { id: a, note: 'n'.repeat(10001) },
+      { id: b, status: 'finished' },
+      { status: 'done' },
+      { id: c, title: 't'.repeat(201) },
+      { id: c, status: 'in_progress' },
+    ],
+  })
+
+  expect(String(updated.result)).toBe(
+    [
+      'Updated 1 item:',
+      '- skipped zz00zz00: no backlog item has that id',
+      `- skipped ${a}: its note is 10001 characters and the limit is 10000`,
+      `- skipped ${b}: nothing to change; give a status, priority, category, title, resolution or note`,
+      '- skipped an entry with no id',
+      `- skipped ${c}: its title is 201 characters and the limit is 200`,
+      `- ${c}: in progress, high priority`,
+    ].join('\n'),
+  )
+  expect(files.size).toBe(written + 1)
+})
+
+test('an update of several items with none to change says so, and one over the batch limit or given with an id is refused whole', async ($, on) => {
+  const { files, ids } = world(on)
+  await $.session.start(start)
+  await call($, 'add', { items: [DEFECT] })
+  const id = ids()[0] ?? ''
+  const written = files.size
+
+  expect(String((await call($, 'update', { items: [] })).result)).toBe(
+    'Nothing changed: `items` was empty.',
+  )
+  expect(
+    String(
+      (await call($, 'update', { items: [{ id: 'zz00zz00', status: 'done' }] }))
+        .result,
+    ),
+  ).toBe(
+    'Nothing was changed. mcp__backlog__list gives the ids.\n- skipped zz00zz00: no backlog item has that id',
+  )
+  expect(
+    await call($, 'update', {
+      items: Array.from({ length: 51 }, () => ({ id, status: 'done' })),
+    }),
+  ).toEqual({
+    deny: 'mcp__backlog__update takes at most 50 items in one call and got 51. Nothing was changed: send them in batches.',
+  })
+  expect(
+    await call($, 'update', { id, items: [{ id, status: 'done' }] }),
+  ).toEqual({
+    deny: 'Give `id` and the fields to change for one item, or `items` for several, not both. Nothing was changed.',
+  })
+  expect(files.size).toBe(written)
+  expect(await full($, id)).toMatch('(defect, high priority, open)')
+})
+
+test('an update of several items whose write fails part way says what changed and what to send again', async ($, on) => {
+  const { files, ids, refuseWrites } = world(on)
+  await $.session.start(start)
+  await call($, 'add', {
+    items: [DEFECT, DECISION, { ...DEFECT, title: 'Third' }],
+  })
+  const [a = '', b = '', c = ''] = ids()
+  const written = files.size
+  const changes = [
+    { id: a, status: 'in_progress' },
+    { id: b, status: 'in_progress' },
+    { id: c, status: 'in_progress' },
+  ]
+
+  refuseWrites(1, 1)
+  expect(String((await call($, 'update', { items: changes })).deny)).toMatch(
+    new RegExp(
+      `^The backlog could not be written: .*ENOSPC: no space left on device\\. Not changed: ${b}, ${c}\\. Send those again; what is listed here needs no resending\\.\\nChanged before the failure:\\n- ${a}: in progress, high priority$`,
+    ),
+  )
+  expect(files.size).toBe(written + 1)
+  expect(await full($, a)).toMatch('in progress')
+  expect(await full($, b)).toMatch('(decision, critical priority, open)')
+
+  refuseWrites(1)
+  expect(String((await call($, 'update', { items: changes })).deny)).toMatch(
+    /^The backlog could not be read or written: .*ENOSPC: no space left on device\. Nothing was recorded or changed\.$/,
+  )
+  expect(files.size).toBe(written + 1)
+})
+
+test('calls that queue behind a listing take it as their own, and list no more', async ($, on) => {
+  const { files, ids, listings, holdListings, releaseListings } = world(on)
+  await $.session.start(start)
+  await call($, 'add', {
+    items: [DEFECT, DECISION, { ...DEFECT, title: 'Third' }],
+  })
+  const [a = '', b = '', c = ''] = ids()
+  const written = files.size
+  const before = listings.length
+
+  holdListings()
+  const first = call($, 'update', { id: a, status: 'in_progress' })
+  await until(() => listings.length > before)
+  const queued = [
+    call($, 'update', { id: b, status: 'in_progress' }),
+    call($, 'list', {}),
+    call($, 'update', { id: c, status: 'in_progress' }),
+  ]
+  releaseListings()
+  const [one, two, listed, three] = await Promise.all([first, ...queued])
+
+  expect(String(one?.result)).toBe(`Updated ${a}: in progress, high priority.`)
+  expect(String(two?.result)).toBe(
+    `Updated ${b}: in progress, critical priority.`,
+  )
+  expect(String(three?.result)).toBe(
+    `Updated ${c}: in progress, high priority.`,
+  )
+  expect(String(listed?.result)).toMatch(`${b} [decision, critical, in progress`)
+  expect(listings.length).toBe(before + 1)
+  expect(files.size).toBe(written + 3)
+})
+
+test('an update whose turn comes after its budget ran out was answered as not in time, and writes nothing', { timeoutMs: 40000 }, async ($, on) => {
+  const { files, ids, filesOf, slowHost } = world(on)
+  await $.session.start(start)
+  await call($, 'add', { items: [DEFECT, DECISION] })
+  const [a = '', b = ''] = ids()
+  const written = files.size
+
+  // The first call's look at the folder, listing and write take twelve
+  // seconds between them, none of its own: the engine stops a hook's clock
+  // for its `$` calls. The second waits its turn for longer than a hook's
+  // budget, in real time, and the engine answers for it meanwhile.
+  slowHost(4000)
+  const first = call($, 'update', { id: a, status: 'in_progress' })
+  const second = await call($, 'update', { id: b, status: 'in_progress' })
+  slowHost(0)
+  expect(second).toEqual({
+    deny: 'The backlog could not be read or written: it did not answer in time. Nothing was recorded or changed.',
+  })
+
+  expect(String((await first).result)).toBe(
+    `Updated ${a}: in progress, high priority.`,
+  )
+  // The second's turn has come and gone by the time a later call answers.
+  await call($, 'list', {})
+  expect(files.size).toBe(written + 1)
+  expect(filesOf(b)).toHaveLength(1)
+  expect(await full($, b)).toMatch('(decision, critical priority, open)')
 })
