@@ -2369,6 +2369,32 @@ test('a project root given with backslashes and a trailing slash is the same pro
   )
 })
 
+for (const [root, project] of [
+  ['/', '/'],
+  ['C:\\', 'C:/'],
+  ['C:/', 'C:/'],
+] as const) {
+  test(`a session rooted at the filesystem root ${JSON.stringify(root)} keeps the root as its project`, async ($, on) => {
+    const { ids } = world(on, root)
+    await $.session.start(start)
+    await call($, 'add', { items: [DEFECT] })
+    const id = ids().at(-1) ?? ''
+
+    expect(await full($, id)).toMatch(`Recorded in ${project}.`)
+    expect((await slashBacklog($)).text).toBe(
+      `Backlog pane opened: 1 open in ${project}.`,
+    )
+  })
+}
+
+test('the folder is found under a home that is a filesystem root', async ($, on) => {
+  const { files } = world(on, '/work/app', 'enter', { env: { HOME: '/' } })
+  await $.session.start(start)
+  await call($, 'add', { items: [DEFECT] })
+
+  expect([...files.keys()][0]).toMatch(/^\/\.claude\/backlog\/items\/[a-z0-9]{8}\./)
+})
+
 test('a folder that cannot be listed is logged at start, and the polls after a failure catch up', async ($, on) => {
   const { toasts, logs, clock, elsewhere, failListing } = world(on)
   elsewhere({ id: 'bf11bf11', set: recorded('Recorded before the failure') })

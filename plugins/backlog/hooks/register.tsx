@@ -238,8 +238,20 @@ const oneLine = (text: unknown, limit: number): string =>
 const record = (raw: unknown): Record<string, unknown> =>
   typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : {}
 
-const slash = (path: string): string =>
-  path.replace(/\\/g, '/').replace(/\/+$/, '')
+// A path with forward slashes and no trailing one, except a root: `/` and
+// `C:/` keep theirs, as trimmed they would name nothing, or a drive alone.
+const slash = (path: string): string => {
+  const trimmed = path.replace(/\\/g, '/').replace(/\/+$/, '')
+
+  return (trimmed === '' && path !== '') || /^[A-Za-z]:$/.test(trimmed)
+    ? `${trimmed}/`
+    : trimmed
+}
+
+// `under` beneath `base`, with one slash between them whether or not `base`
+// ends in one.
+const join = (base: string, under: string): string =>
+  base.endsWith('/') ? `${base}${under}` : `${base}/${under}`
 
 // A project root as items are compared by it. A path keeps its inner
 // whitespace: `/work/my  app` and `/work/my app` are two projects.
@@ -507,8 +519,15 @@ const foldAll = (): BacklogItem[] => {
   return [...byId.values()].filter(item => item.title !== '')
 }
 
-const nameOf = (path: string): string =>
-  path.split('/').filter(part => part !== '').at(-1) ?? path
+// A project's name: the last part of its path, or the root itself for a
+// session rooted at one, `/` or `C:/`.
+const nameOf = (path: string): string => {
+  const parts = path.split('/').filter(part => part !== '')
+
+  return parts.length <= 1 && path.endsWith('/')
+    ? path
+    : (parts.at(-1) ?? path)
+}
 
 const isOpen = (item: BacklogItem): boolean =>
   item.status === 'open' || item.status === 'in_progress'
@@ -770,7 +789,7 @@ const folder = async ($: EngineInterface): Promise<string> => {
 
   for (const [base, under] of places) {
     if (base !== undefined && base !== '') {
-      home = `${slash(base)}/${under}`
+      home = join(slash(base), under)
 
       return home
     }
