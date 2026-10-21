@@ -23,12 +23,12 @@ endjin-marketplace/
     │           ├── SKILL.md
     │           ├── references/
     │           └── scripts/
-    └── backlog/                  # A mod: a hooks module instead of skills
+    └── wip/                      # A mod: a hooks module instead of skills
         ├── .claude-plugin/
         │   └── plugin.json
         ├── hooks/
         │   ├── hooks.json        # Names the hooks module
-        │   └── register.tsx      # The mod: pane, tools, /backlog
+        │   └── register.tsx      # The mod: pane, tools, /wip
         ├── types/index.d.ts      # Item shape and state contract
         └── tests/                # Run with `claude plugin test`
 ```
@@ -41,7 +41,7 @@ Each plugin entry in `marketplace.json` references its directory with an explici
 | --- | --- | --- |
 | [`code-review-tools`](#code-review-tools) | Skill | `explain-diff-html`: a rich, self-contained HTML explanation of a code change, branch, or PR |
 | [`writing-tools`](#writing-tools) | Skill | `clear-technical-writing`: writes and rewrites technical text so it is plain, consistent, and inclusive |
-| [`backlog`](#backlog) | Mod (Claude Code only) | A side pane that tracks the defects, issues, tasks and decisions your sessions turn up |
+| [`wip`](#wip) | Mod (Claude Code only) | A side pane that tracks the defects, issues, tasks and decisions your sessions turn up |
 
 Install any of them with `/plugin install <plugin>@endjin` once the marketplace is added; see [Using the marketplace with Claude Code](#using-the-marketplace-with-claude-code).
 
@@ -82,14 +82,14 @@ You can also ask in your own words, for example "tighten this README" or "make t
 
 The skill includes a checker script that flags long sentences, passive voice, complex tenses, inflated words, vague qualifiers, non-inclusive terms, Latin abbreviations, and long noun chains. The agent runs it on each draft and fixes what it finds. The checker needs Python 3 on `PATH`.
 
-### backlog
+### wip
 
-`backlog` is a mod: it adds a pane to Claude Code that keeps the defects, issues, follow-up tasks and decisions from your sessions in one list, so they do not scroll away in the transcript. It needs a Claude Code build with mod support, and it does nothing in other agents.
+`wip` is a mod: it adds a work-in-progress (WIP) pane to Claude Code that keeps the defects, issues, follow-up tasks and decisions from your sessions in one list, so they do not scroll away in the transcript. It needs a Claude Code build with mod support, and it does nothing in other agents.
 
 To use it:
 
-1. **Install it and reload.** The pane opens at session start in a terminal at least 144 columns wide. In a narrower terminal, run `/backlog` to open it.
-2. **Work as usual.** When a piece of work ends, Claude records what it leaves behind: defects, issues, tasks, and decisions that need you. You can also tell it to, for example "add that to the backlog as a high-priority defect".
+1. **Install it and reload.** In Claude Code's fullscreen layout, the pane opens beside the transcript at session start in a terminal at least 144 columns wide. In a narrower terminal, or on the main screen (under tmux by default), run `/wip` to open it; on the main screen it is a box above the prompt.
+2. **Work as usual.** When a piece of work ends, Claude records what it leaves behind: defects, issues, tasks, and decisions that need you. You can also tell it to, for example "add that to WIP as a high-priority defect".
 3. **Triage in the pane.** Items are grouped as Decisions, Defects, Issues and Tasks, and each group is sorted from critical to low. Select an item to read its full context and Claude's recommendation.
 4. **Act on an item** from its detail view:
    - Pick one of a decision's options, or select **Accept recommendation**.
@@ -99,9 +99,9 @@ To use it:
 
 Deciding, fixing and directing each send the item to Claude as a prompt in the session where you pressed the button. Claude marks the item done, with a one-line resolution, when it finishes.
 
-Every session that has the plugin enabled shares one backlog. It is a folder of JSON change records, `~/.claude/backlog/items/`, in which no file is ever rewritten, so sessions that change the same item do not overwrite each other. The pane shows the current project's items; select **All projects** to see the rest. The status line shows the open count, for example `backlog: 4 open, 1 to decide`.
+Every session that has the plugin enabled shares one WIP list. It is a folder of JSON change records, `~/.claude/wip/items/`, in which no file is ever rewritten, so sessions that change the same item do not overwrite each other. The pane shows the current project's items; select **All projects** to see the rest. The status line shows the open count, for example `wip: 4 open, 1 to decide`.
 
-See the [backlog README](plugins/backlog/README.md) for the tools Claude uses, the storage format, and how to develop the mod.
+See the [wip README](plugins/wip/README.md) for the tools Claude uses, the storage format, and how to develop the mod.
 
 ## Using the marketplace with Claude Code
 
@@ -132,7 +132,7 @@ To get the latest plugin changes later (versions track git commits, so every pus
 /plugin marketplace update
 ```
 
-Skills are namespaced by plugin: `explain-diff-html` is invoked as `/code-review-tools:explain-diff-html`, and `clear-technical-writing` as `/writing-tools:clear-technical-writing`. Claude also invokes a skill by itself when your request matches the skill's `description`. A mod such as `backlog` registers its own command (`/backlog`) with no namespace. [Plugins](#plugins) describes how to use each one.
+Skills are namespaced by plugin: `explain-diff-html` is invoked as `/code-review-tools:explain-diff-html`, and `clear-technical-writing` as `/writing-tools:clear-technical-writing`. Claude also invokes a skill by itself when your request matches the skill's `description`. A mod such as `wip` registers its own command (`/wip`) with no namespace. [Plugins](#plugins) describes how to use each one.
 
 Non-interactive (CI, scripts):
 
@@ -168,7 +168,7 @@ Portability caveats for future plugins:
 
 - Skills are fully portable; `commands/`, output styles, and the `renames` field are Claude Code-only (Copilot ignores them).
 - Copilot supports only a subset of hook events (command handlers only) and ignores rich agent frontmatter (`model`, `permissionMode`, etc.).
-- Mods (a `hooks/hooks.json` that names a hooks module under `modules`, as `backlog` does) are Claude Code-only.
+- Mods (a `hooks/hooks.json` that names a hooks module under `modules`, as `wip` does) are Claude Code-only.
 - Never add an explicit `skills` field to `plugin.json` — both tools auto-discover `skills/`, and an explicit field breaks compatibility.
 
 ## Adding a new plugin

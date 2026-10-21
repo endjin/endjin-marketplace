@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to the backlog plugin are documented in this file.
+All notable changes to the wip plugin are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -12,20 +12,24 @@ fixed in review before the release, kept here so the review record stands.
 
 ### Added
 
-- A backlog pane, opened with `/backlog`, that lists the defects, issues, tasks
+- A WIP pane, opened with `/wip`, that lists the defects, issues, tasks
   and decisions sessions turn up, grouped as Decisions, Defects, Issues and
   Tasks and sorted critical to low. Each heading folds its section to the
   heading and count, and the choice is kept across sessions.
+- The pane opens by itself at session start only where the terminal docks it
+  beside the transcript (the fullscreen layout). On the main screen it opens
+  when asked, as a box above the prompt as tall as the list needs, up to what
+  the screen can spare.
 - A detail view with the item's full context, Claude's recommendation and its
   options, where you pick an option, accept the recommendation, direct the
   work, fix it now, change its priority, mark it done, dismiss, reopen or
   release it. Acting on an item sends it to the session as a prompt.
-- Three tools for Claude: `mcp__backlog__add` records one or more items and
+- Three tools for Claude: `mcp__wip__add` records one or more items and
   refreshes an open item with the same title instead of duplicating it;
-  `mcp__backlog__update` changes an item's status, priority, category or
-  title, sets a resolution or appends a note; `mcp__backlog__list` lists the
-  backlog or reads one item in full.
-- Several items in one `mcp__backlog__update` call, as `items`: the folder is
+  `mcp__wip__update` changes an item's status, priority, category or
+  title, sets a resolution or appends a note; `mcp__wip__list` lists the
+  WIP items or reads one item in full.
+- Several items in one `mcp__wip__update` call, as `items`: the folder is
   listed once, one record is written per item, the pane is redrawn once, and
   each entry is answered in the order given.
 - A system-prompt section that tells Claude to record what a piece of work
@@ -37,13 +41,13 @@ fixed in review before the release, kept here so the review record stands.
   `●` for an open item recorded in the last ten minutes. A claim held for a
   day or more shows its age.
 - A row above the prompt on the terminal and desktop with the current
-  project's counts, `backlog: 4 open, » 1 in progress, ● 2 new, 1 to decide`;
-  pressing `backlog:` opens or closes the pane. VS Code and mobile show the
+  project's counts, `wip: 4 open, » 1 in progress, ● 2 new, 1 to decide`;
+  pressing `wip:` opens or closes the pane. VS Code and mobile show the
   counts on the status line, including when they attach to a terminal
   session.
 - Item ids in Claude's replies drawn as links that open the pane on the item,
   on the desktop and in the fullscreen terminal.
-- Append-only storage under `~/.claude/backlog/items/`, shared by every
+- Append-only storage under `~/.claude/wip/items/`, shared by every
   session: each change is a file of its own, an item is its records folded in
   time order, and two sessions can change one item without a lock. Items kept
   in the earlier one-file format are still read.
@@ -53,6 +57,10 @@ fixed in review before the release, kept here so the review record stands.
 - Fewer folder listings while idle: after twelve polls that find nothing new,
   the folder is listed every thirty seconds until something changes or a
   prompt is sent.
+- A move of the records kept under the plugin's earlier name: each session
+  start copies the files of `~/.claude/backlog/items/` into the WIP folder,
+  removes them once every copy is written, and removes the old folders when
+  they are empty.
 - A session that ends sets the items it had in progress back to open, each
   with a note; a Release button on an item in progress does the same by hand.
 - Limits enforced by refusing with the reason rather than cutting text: 50
@@ -85,7 +93,7 @@ fixed in review before the release, kept here so the review record stands.
   update reported success.
 - The detail view hid everything past 9,000 characters, including later
   notes.
-- A resumed session whose start-up state was gone showed an empty backlog
+- A resumed session whose start-up state was gone showed an empty WIP list
   though every record was on disk.
 - With no home directory set, or an empty `USERPROFILE`, records were written
   under the filesystem root.
@@ -94,7 +102,7 @@ fixed in review before the release, kept here so the review record stands.
   boolean was accepted and sorted before every real record.
 - The counts went to a surface chosen once at session start, so a phone or
   VS Code attached later showed nothing.
-- `mcp__backlog__add` given the title of an open item refreshed everything
+- `mcp__wip__add` given the title of an open item refreshed everything
   but its category, so a defect recorded again as a decision stayed a defect.
 - Resolutions the pane writes, `Accepted the recommendation: ...` and
   `Directed: ...`, were cut at 200 characters; they are kept whole up to

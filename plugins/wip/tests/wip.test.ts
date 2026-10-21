@@ -7,13 +7,13 @@ import type { On, RenderSurface, RenderViewport, UiPane } from 'claude-code'
 // slow in real time is what a hook's budget is measured against.
 declare function setTimeout(callback: () => void, ms: number): unknown
 
-const DIR = '/home/t/.claude/backlog/items'
+const DIR = '/home/t/.claude/wip/items'
 const PANE = {
-  plugin: 'backlog',
+  plugin: 'wip',
   component: 'Pane',
-  requestId: 'backlog',
+  requestId: 'wip',
   props: {
-    title: 'Backlog',
+    title: 'WIP',
     isFocused: true,
     bodyColumns: 60,
     placement: 'dock',
@@ -21,9 +21,14 @@ const PANE = {
     view: {},
   },
 } as const
+// The terminal in its fullscreen layout, which docks a pane beside the
+// transcript, and on its main screen, which seats one above the prompt.
+const FULLSCREEN = { columns: 100, rows: 40, isFullscreen: true }
+const MAIN_SCREEN = { columns: 100, rows: 40, isFullscreen: false }
 const BAND = {
-  plugin: 'backlog',
+  plugin: 'wip',
   component: 'AbovePrompt',
+  viewport: FULLSCREEN,
   props: {
     hasSurvey: false,
     isWorking: false,
@@ -76,6 +81,8 @@ const world = (
   const statuses: (string | undefined)[] = []
   const logs: string[] = []
   const opened: { id: string; focus?: boolean }[] = []
+  // The body rows each open asked for, in the order opened.
+  const rows: (number | undefined)[] = []
   const closed: string[] = []
   // The pane as the host holds it, undefined while it is not open.
   let pane: UiPane | undefined
@@ -246,10 +253,11 @@ const world = (
   })
   on('command.register', ($, e) => ({ value: { command: e.name } }))
   on('tool.register', ($, e) => ({
-    value: { tool: `mcp__backlog__${e.name}` },
+    value: { tool: `mcp__wip__${e.name}` },
   }))
   on('ui.open', ($, e) => {
     opened.push({ id: e.id, focus: e.focus })
+    rows.push(e.rows)
     // An open raises the pane in front of any other.
     pane = {
       id: e.id,
@@ -360,6 +368,7 @@ const world = (
     statuses,
     logs,
     opened,
+    rows,
     closed,
     clock,
     ids,
@@ -415,7 +424,7 @@ const start = { cwd: '/work/app', surface: 'terminal', isInteractive: true } as 
 let calls = 0
 const call = ($: Engine, tool: string, args: Record<string, unknown>) =>
   $.tool.call({
-    tool: `mcp__backlog__${tool}`,
+    tool: `mcp__wip__${tool}`,
     tool_use_id: `call-${(calls += 1)}`,
     ...args,
   })
@@ -515,7 +524,7 @@ test('an item opens in detail, and Fix now hands it to Claude', async ($, on) =>
   await ui.press({ key: 'fix' })
   expect(prompts).toHaveLength(1)
   expect(prompts[0]).toMatch('src/retry.ts:40')
-  expect(prompts[0]).toMatch(`mcp__backlog__update for ${id}`)
+  expect(prompts[0]).toMatch(`mcp__wip__update for ${id}`)
   expect(await full($, id)).toMatch('in progress')
   expect(toasts.at(-1)).toMatch('Sent to Claude')
   await ui.unmount()
@@ -531,7 +540,7 @@ test('choosing an option records the decision and tells Claude', async ($, on) =
   await ui.press({ key: `open:${id}` })
   await ui.press({ key: 'option:1' })
 
-  expect(prompts[0]).toMatch('I have decided this backlog item: "Move to Kafka"')
+  expect(prompts[0]).toMatch('I have decided this WIP item: "Move to Kafka"')
   expect(await full($, id)).toMatch('Resolution: Decided: Move to Kafka')
   await ui.unmount()
 })
@@ -657,7 +666,7 @@ test('recording a title again does not reopen an item another session closed', a
   elsewhere({ id: first, set: { status: 'done', resolution: 'Fixed over there.' } })
   const again = await call($, 'add', { items: [DEFECT] })
 
-  expect(String(again.result)).not.toMatch('already on the backlog')
+  expect(String(again.result)).not.toMatch('already on the WIP list')
   expect(ids()).toHaveLength(2)
   expect(await full($, first)).toMatch('high priority, done')
   expect(await full($, first)).toMatch('Resolution: Fixed over there.')
@@ -903,7 +912,7 @@ test("another session's item arrives marked new when it was recorded a moment ag
   })
   await clock.advance(5000)
 
-  expect(toasts.at(-1)).toBe('Backlog: 2 new items from other sessions')
+  expect(toasts.at(-1)).toBe('WIP: 2 new items from other sessions')
 
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
@@ -1045,22 +1054,22 @@ test('Claude is told to mark an item in progress when it takes one up', async ($
     model: 'claude-test',
     promptModel: 'claude-test',
     surfaces: ['terminal'],
-    tools: ['mcp__backlog__add'],
+    tools: ['mcp__wip__add'],
     outputStyle: null,
     traits: [],
   })
-  const guidance = composed.sections.find(one => one.id === 'backlog:tracking')
+  const guidance = composed.sections.find(one => one.id === 'wip:tracking')
   expect(guidance?.text).toMatch(
-    'When you start work on an item that is already on the backlog, call mcp__backlog__update with status "in_progress"',
+    'When you start work on an item that is already on the WIP list, call mcp__wip__update with status "in_progress"',
   )
 })
 
 const DAY = 24 * 60 * MINUTE
 
-// `/backlog`, as the person types it.
-const slashBacklog = ($: Engine) =>
+// `/wip`, as the person types it.
+const slashWip = ($: Engine) =>
   $.command.run({
-    command: 'backlog',
+    command: 'wip',
     args: '',
     origin: { kind: 'composer' },
     presentation: { isFullscreen: false, columns: 120 },
@@ -1075,7 +1084,7 @@ const recorded = (title: string, project = '/work/app') => ({
   project,
 })
 
-test("/backlog opens and focuses the pane and says how many of this project's items are open", async ($, on) => {
+test("/wip opens and focuses the pane and says how many of this project's items are open", async ($, on) => {
   const { opened, ids, elsewhere } = world(on)
   await $.session.start(start)
   await call($, 'add', {
@@ -1086,25 +1095,25 @@ test("/backlog opens and focuses the pane and says how many of this project's it
   // Recorded since the last poll: the command reads the folder itself.
   elsewhere({ id: 'jj11jj11', set: recorded('Arrived just now') })
 
-  const ran = await slashBacklog($)
+  const ran = await slashWip($)
 
-  expect(ran.text).toBe('Backlog pane opened: 3 open in app.')
-  expect(opened.at(-1)).toEqual({ id: 'backlog', focus: true })
+  expect(ran.text).toBe('WIP pane opened: 3 open in app.')
+  expect(opened.at(-1)).toEqual({ id: 'wip', focus: true })
 })
 
-test('/backlog says the pane is not shown, and why, when the host does not place it', async ($, on) => {
+test('/wip says the pane is not shown, and why, when the host does not place it', async ($, on) => {
   const reason = 'the terminal is 100 columns wide, under the 110 a pane needs'
   world(on, '/work/app', 'enter', { notPlaced: reason })
   await $.session.start(start)
 
-  const ran = await slashBacklog($)
+  const ran = await slashWip($)
 
   expect(ran.text).toBe(
-    `Backlog: 0 open in app. The pane is not shown: ${reason}.`,
+    `WIP: 0 open in app. The pane is not shown: ${reason}.`,
   )
 })
 
-test('the backlog section comes after the sections beneath it, and only when Claude has the add tool', async ($, on) => {
+test('the WIP list section comes after the sections beneath it, and only when Claude has the add tool', async ($, on) => {
   world(on)
   const core = {
     id: 'engine:core',
@@ -1125,8 +1134,8 @@ test('the backlog section comes after the sections beneath it, and only when Cla
 
   expect((await compose(['Read', 'Edit'])).sections).toEqual([core])
   expect(
-    (await compose(['Read', 'mcp__backlog__add'])).sections.map(one => one.id),
-  ).toEqual(['engine:core', 'backlog:tracking'])
+    (await compose(['Read', 'mcp__wip__add'])).sections.map(one => one.id),
+  ).toEqual(['engine:core', 'wip:tracking'])
 })
 
 test('an item with no title is skipped and said so, and the rest of the batch is recorded', async ($, on) => {
@@ -1145,14 +1154,14 @@ test('an item with no title is skipped and said so, and the rest of the batch is
   expect(ids()).toHaveLength(1)
   expect(String(added.result)).toBe(
     [
-      'Recorded on the backlog:',
+      'Recorded on the WIP list:',
       '- skipped an item with no title',
       '- skipped an item with no title',
       '- skipped an item with no title',
       `- ${ids()[0]}: Retry loop never backs off`,
     ].join('\n'),
   )
-  expect(toasts).toEqual(['Backlog: 1 item recorded'])
+  expect(toasts).toEqual(['WIP: 1 item recorded'])
 })
 
 test('a batch of items with no title records nothing and shows no toast', async ($, on) => {
@@ -1162,7 +1171,7 @@ test('a batch of items with no title records nothing and shows no toast', async 
   const added = await call($, 'add', { items: [{ ...DEFECT, title: '   ' }] })
 
   expect(String(added.result)).toBe(
-    'Recorded on the backlog:\n- skipped an item with no title',
+    'Recorded on the WIP list:\n- skipped an item with no title',
   )
   expect(files.size).toBe(0)
   expect(toasts).toEqual([])
@@ -1186,14 +1195,14 @@ test('an item whose detail is over the limit is skipped whole, and one at the li
   expect(ids()).toHaveLength(1)
   expect(String(added.result)).toBe(
     [
-      'Recorded on the backlog:',
+      'Recorded on the WIP list:',
       `- skipped "${longTitle.slice(0, 59)}…": its detail is 20001 characters and the limit is 20000`,
       `- ${id}: Detail at the limit`,
     ].join('\n'),
   )
   expect([...files.values()].some(text => text.includes('ddd'))).toBe(false)
   expect(await full($, id)).toMatch(atLimit)
-  expect(toasts).toEqual(['Backlog: 1 item recorded'])
+  expect(toasts).toEqual(['WIP: 1 item recorded'])
 })
 
 test('an add with no items, or items that are not a list, records nothing', async ($, on) => {
@@ -1242,12 +1251,12 @@ test('recording the title of an open item again refreshes what the draft gives a
   })
 
   expect(String(again.result)).toBe(
-    `Recorded on the backlog:\n- ${id}: already on the backlog, refreshed`,
+    `Recorded on the WIP list:\n- ${id}: already on the WIP list, refreshed`,
   )
   expect(ids()).toEqual([id])
   expect(await full($, id)).toBe(
     [
-      `Backlog item ${id} (decision, low priority, in progress): Which queue do we standardise on?`,
+      `WIP item ${id} (decision, low priority, in progress): Which queue do we standardise on?`,
       'Recorded in /work/app.',
       'Three queues are in use now.',
       'Options:\n- Keep SQS: No migration.\n- Move to Kafka',
@@ -1303,13 +1312,13 @@ test('the same title is a separate item in another project, and one item when tw
   expect(ids()).toHaveLength(3)
   expect(String(batch.result)).toBe(
     [
-      'Recorded on the backlog:',
+      'Recorded on the WIP list:',
       `- ${id}: Cache grows without bound`,
-      `- ${id}: already on the backlog, refreshed`,
+      `- ${id}: already on the WIP list, refreshed`,
     ].join('\n'),
   )
   expect(await full($, id)).toMatch('(defect, low priority, open)')
-  expect(toasts.at(-1)).toBe('Backlog: 2 items recorded')
+  expect(toasts.at(-1)).toBe('WIP: 2 items recorded')
 })
 
 test('two adds of one title made at once end as one item', async ($, on) => {
@@ -1324,8 +1333,8 @@ test('two adds of one title made at once end as one item', async ($, on) => {
   const id = ids()[0] ?? ''
   expect(ids()).toEqual([id])
   expect(results.map(one => String(one.result)).sort()).toEqual([
-    `Recorded on the backlog:\n- ${id}: Retry loop never backs off`,
-    `Recorded on the backlog:\n- ${id}: already on the backlog, refreshed`,
+    `Recorded on the WIP list:\n- ${id}: Retry loop never backs off`,
+    `Recorded on the WIP list:\n- ${id}: already on the WIP list, refreshed`,
   ])
 })
 
@@ -1353,11 +1362,11 @@ test('what Claude sends is held to shape: one clean title line, options as label
 
   const id = ids()[0] ?? ''
   expect(String(added.result)).toBe(
-    `Recorded on the backlog:\n- ${id}: Line one line two three`,
+    `Recorded on the WIP list:\n- ${id}: Line one line two three`,
   )
   expect(await full($, id)).toBe(
     [
-      `Backlog item ${id} (task, medium priority, open): Line one line two three`,
+      `WIP item ${id} (task, medium priority, open): Line one line two three`,
       'Recorded in /work/app.',
       'Shaped.',
       'Options:\n- Plain choice\n- With detail: Why.',
@@ -1374,7 +1383,7 @@ test('an update of an id no item has is said so, and nothing is written', async 
   const updated = await call($, 'update', { id: 'zz00zz00', status: 'done' })
 
   expect(String(updated.result)).toBe(
-    'No backlog item has the id "zz00zz00". mcp__backlog__list gives the ids.',
+    'No WIP item has the id "zz00zz00". mcp__wip__list gives the ids.',
   )
   expect(files.size).toBe(written)
 })
@@ -1464,15 +1473,15 @@ test("an update folds after another session's change even when that session's cl
   expect(await full($, id)).toMatch('(defect, critical priority, open)')
 })
 
-test('Claude reading an id no item has, or an empty backlog, is told so', async ($, on) => {
+test('Claude reading an id no item has, or an empty WIP list, is told so', async ($, on) => {
   world(on)
   await $.session.start(start)
 
   expect(String((await call($, 'list', {})).result)).toBe(
-    'The backlog has no matching items.',
+    'The WIP list has no matching items.',
   )
   expect(String((await call($, 'list', { id: 'zz00zz00' })).result)).toBe(
-    'No backlog item has the id "zz00zz00".',
+    'No WIP item has the id "zz00zz00".',
   )
 })
 
@@ -1549,7 +1558,7 @@ test('one item in full carries its options, recommendation, resolution and dated
 
   expect(await full($, id)).toBe(
     [
-      `Backlog item ${id} (decision, critical priority, done): Which queue do we standardise on?`,
+      `WIP item ${id} (decision, critical priority, done): Which queue do we standardise on?`,
       'Recorded in /work/app.',
       'Two queues are in use.',
       'Options:\n- Keep SQS: No migration.\n- Move to Kafka',
@@ -1584,7 +1593,7 @@ test('Accept recommendation hands a decision to Claude and records that it was a
 
   expect(prompts).toHaveLength(1)
   expect(prompts[0]).toMatch(
-    /^I accept your recommendation for this backlog item\. Carry it out\.\n\nBacklog item /,
+    /^I accept your recommendation for this WIP item\. Carry it out\.\n\nWIP item /,
   )
   const item = await full($, id)
   expect(item).toMatch('(decision, critical priority, in progress)')
@@ -1641,7 +1650,7 @@ test('a direction typed on a decision is sent to Claude and recorded as how it w
 
   expect(prompts).toHaveLength(1)
   expect(prompts[0]).toMatch(
-    /^My direction for this backlog item: Keep SQS, and revisit in Q3\.\n\nBacklog item /,
+    /^My direction for this WIP item: Keep SQS, and revisit in Q3\.\n\nWIP item /,
   )
   const item = await full($, id)
   expect(item).toMatch('(decision, critical priority, in progress)')
@@ -1663,7 +1672,7 @@ test('a direction typed on a defect is sent to Claude and records no resolution'
   })
 
   expect(prompts[0]).toMatch(
-    /^My direction for this backlog item: Use the jittered backoff from lib\/retry\.\n\n/,
+    /^My direction for this WIP item: Use the jittered backoff from lib\/retry\.\n\n/,
   )
   const item = await full($, id)
   expect(item).toMatch('(defect, high priority, in progress)')
@@ -1684,7 +1693,7 @@ test('a blank direction sends nothing and changes nothing', async ($, on) => {
 
   expect(prompts).toEqual([])
   expect(files.size).toBe(written)
-  expect(toasts).toEqual(['Backlog: 1 item recorded'])
+  expect(toasts).toEqual(['WIP: 1 item recorded'])
   expect(await full($, id)).toMatch('(decision, critical priority, open)')
   await ui.unmount()
 })
@@ -1861,7 +1870,7 @@ test('Back returns to the list, and an item open in detail that leaves the folde
 
   expect(await ui.find({ key: 'back' })).toBeUndefined()
   expect(await rows(ui)).toEqual(['Which queue do we standardise on?'])
-  expect(toasts).toEqual(['Backlog: 2 items recorded'])
+  expect(toasts).toEqual(['WIP: 2 items recorded'])
   await ui.unmount()
 })
 
@@ -1913,12 +1922,12 @@ test('the detail view shows each note under the day it was written, in order', a
   await ui.unmount()
 })
 
-test('with CLAUDE_CONFIG_DIR set the backlog is kept under it, and nothing under HOME', async ($, on) => {
+test('with CLAUDE_CONFIG_DIR set the WIP list is kept under it, and nothing under HOME', async ($, on) => {
   const { files } = world(on, '/work/app', 'enter', {
     env: { HOME: '/home/t', CLAUDE_CONFIG_DIR: '/etc/claude/' },
   })
   files.set(
-    '/etc/claude/backlog/items/cf11cf11.json',
+    '/etc/claude/wip/items/cf11cf11.json',
     JSON.stringify({
       id: 'cf11cf11',
       at: 1_699_000_000_000,
@@ -1935,11 +1944,11 @@ test('with CLAUDE_CONFIG_DIR set the backlog is kept under it, and nothing under
   const paths = [...files.keys()]
   expect(paths).toHaveLength(2)
   expect(
-    paths.every(path => path.startsWith('/etc/claude/backlog/items/')),
+    paths.every(path => path.startsWith('/etc/claude/wip/items/')),
   ).toBe(true)
 })
 
-test('with no HOME the backlog is kept under USERPROFILE, spelt with forward slashes', async ($, on) => {
+test('with no HOME the WIP list is kept under USERPROFILE, spelt with forward slashes', async ($, on) => {
   const { files } = world(on, '/work/app', 'enter', {
     env: { USERPROFILE: '\\Users\\t\\' },
   })
@@ -1950,7 +1959,7 @@ test('with no HOME the backlog is kept under USERPROFILE, spelt with forward sla
   const paths = [...files.keys()]
   expect(paths).toHaveLength(1)
   expect(paths[0]).toMatch(
-    /^\/Users\/t\/\.claude\/backlog\/items\/[a-z0-9]{8}\.[a-z0-9]+\.[a-z0-9]{8}\.json$/,
+    /^\/Users\/t\/\.claude\/wip\/items\/[a-z0-9]{8}\.[a-z0-9]+\.[a-z0-9]{8}\.json$/,
   )
 })
 
@@ -1959,7 +1968,7 @@ for (const env of [
   { CLAUDE_CONFIG_DIR: '', HOME: '/home/t' },
   { CLAUDE_CONFIG_DIR: '', USERPROFILE: '', HOME: '/home/t' },
 ] as Record<string, string>[]) {
-  test(`an empty variable counts as unset, and HOME holds the backlog (${Object.keys(env).join(', ')})`, async ($, on) => {
+  test(`an empty variable counts as unset, and HOME holds the WIP list (${Object.keys(env).join(', ')})`, async ($, on) => {
     const { files } = world(on, '/work/app', 'enter', { env })
     await $.session.start(start)
 
@@ -1983,17 +1992,18 @@ test('with no home directory the session starts and says why once, and Claude is
     'no home directory was found: CLAUDE_CONFIG_DIR, USERPROFILE and HOME are all unset or empty'
   await $.session.start(start)
 
-  expect(logs).toEqual([`backlog: could not read the backlog folder: ${why}`])
-  expect(opened).toEqual([{ id: 'backlog', focus: undefined }])
+  expect(logs).toEqual([`wip: could not read the WIP folder: ${why}`])
+  await (await $.ui.mount({ ...BAND, surface: 'terminal' })).unmount()
+  expect(opened).toEqual([{ id: 'wip', focus: undefined }])
 
-  const refused = `The backlog could not be read or written: ${why}. Nothing was recorded or changed.`
+  const refused = `The WIP list could not be read or written: ${why}. Nothing was recorded or changed.`
   expect(await call($, 'add', { items: [DEFECT] })).toEqual({ deny: refused })
   expect(
     await call($, 'update', { id: 'ab12ab12', status: 'done' }),
   ).toEqual({ deny: refused })
   expect(await call($, 'list', {})).toEqual({ deny: refused })
-  expect((await slashBacklog($)).text).toBe(
-    `Backlog pane opened: could not read the backlog folder: ${why}.`,
+  expect((await slashWip($)).text).toBe(
+    `WIP pane opened: could not read the WIP folder: ${why}.`,
   )
 
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
@@ -2008,7 +2018,7 @@ test('with no home directory the session starts and says why once, and Claude is
   expect(toasts).toEqual([])
 })
 
-test('a session starts with no backlog folder yet, and the first add makes it', async ($, on) => {
+test('a session starts with no WIP folder yet, and the first add makes it', async ($, on) => {
   const { files } = world(on, '/work/app', 'enter', {
     hasFolder: false,
   })
@@ -2110,7 +2120,7 @@ test('a half-written record is passed over until it is complete, then read', asy
   await clock.advance(10000)
 
   expect(String((await call($, 'list', {})).result)).toBe(
-    'The backlog has no matching items.',
+    'The WIP list has no matching items.',
   )
   expect(reads.filter(path => path.endsWith(name))).toHaveLength(1)
 
@@ -2118,7 +2128,7 @@ test('a half-written record is passed over until it is complete, then read', asy
   await clock.advance(5000)
 
   expect(reads.filter(path => path.endsWith(name))).toHaveLength(2)
-  expect(toasts).toEqual(['Backlog: Written in two goes (app)'])
+  expect(toasts).toEqual(['WIP: Written in two goes (app)'])
   expect(await full($, 'hw11hw11')).toMatch('(issue, low priority, open)')
 })
 
@@ -2141,9 +2151,9 @@ test('a record deleted from the folder by hand is gone on the next poll, without
   expect(await yields(bar)).toBe(true)
   await bar.unmount()
   expect(String((await call($, 'list', { includeClosed: true })).result)).toBe(
-    'The backlog has no matching items.',
+    'The WIP list has no matching items.',
   )
-  expect(toasts).toEqual(['Backlog: 1 item recorded'])
+  expect(toasts).toEqual(['WIP: 1 item recorded'])
 })
 
 test('records for an id that was never given a title make no item', async ($, on) => {
@@ -2157,15 +2167,15 @@ test('records for an id that was never given a title make no item', async ($, on
     String(
       (await call($, 'list', { scope: 'all', includeClosed: true })).result,
     ),
-  ).toBe('The backlog has no matching items.')
+  ).toBe('The WIP list has no matching items.')
   expect(String((await call($, 'list', { id: 'gh11gh11' })).result)).toBe(
-    'No backlog item has the id "gh11gh11".',
+    'No WIP item has the id "gh11gh11".',
   )
   expect(
     String(
       (await call($, 'update', { id: 'gh11gh11', status: 'done' })).result,
     ),
-  ).toMatch('No backlog item has the id "gh11gh11"')
+  ).toMatch('No WIP item has the id "gh11gh11"')
   expect(toasts).toEqual([])
 })
 
@@ -2239,7 +2249,7 @@ test('an item kept as one whole file is read by when it was created, and newer c
   )
   expect(await full($, 'wc12')).toBe(
     [
-      'Backlog item wc12 (issue, low priority, done): Changed since',
+      'WIP item wc12 (issue, low priority, done): Changed since',
       'Recorded in /work/app.',
       'Resolution: Fixed.',
       'Note, 2023-11-03: Fixed in the client.',
@@ -2296,22 +2306,22 @@ test("another session's new items are announced in a toast, and nothing else is"
   const long = `Login fails when the password holds a quote ${'q'.repeat(40)}`
   elsewhere({ id: 'lo11lo11', set: recorded(long, '/work/other') })
   await clock.advance(5000)
-  expect(toasts).toEqual([`Backlog: ${long.slice(0, 59)}… (other)`])
+  expect(toasts).toEqual([`WIP: ${long.slice(0, 59)}… (other)`])
 
   elsewhere({ id: 'pr11pr11', set: { priority: 'critical' } })
   await clock.advance(5000)
   await call($, 'add', { items: [DEFECT] })
   await clock.advance(5000)
   expect(toasts).toEqual([
-    `Backlog: ${long.slice(0, 59)}… (other)`,
-    'Backlog: 1 item recorded',
+    `WIP: ${long.slice(0, 59)}… (other)`,
+    'WIP: 1 item recorded',
   ])
 
   for (const id of ['aa22aa22', 'bb22bb22', 'cc22cc22']) {
     elsewhere({ id, set: recorded(`Item ${id}`) })
   }
   await clock.advance(5000)
-  expect(toasts.at(-1)).toBe('Backlog: 3 new items from other sessions')
+  expect(toasts.at(-1)).toBe('WIP: 3 new items from other sessions')
   expect(toasts).toHaveLength(3)
 })
 
@@ -2364,8 +2374,8 @@ test('a project root given with backslashes and a trailing slash is the same pro
   const id = ids().at(-1) ?? ''
 
   expect(await full($, id)).toMatch('Recorded in /work/app.')
-  expect((await slashBacklog($)).text).toBe(
-    'Backlog pane opened: 2 open in app.',
+  expect((await slashWip($)).text).toBe(
+    'WIP pane opened: 2 open in app.',
   )
 })
 
@@ -2381,8 +2391,8 @@ for (const [root, project] of [
     const id = ids().at(-1) ?? ''
 
     expect(await full($, id)).toMatch(`Recorded in ${project}.`)
-    expect((await slashBacklog($)).text).toBe(
-      `Backlog pane opened: 1 open in ${project}.`,
+    expect((await slashWip($)).text).toBe(
+      `WIP pane opened: 1 open in ${project}.`,
     )
   })
 }
@@ -2392,7 +2402,7 @@ test('the folder is found under a home that is a filesystem root', async ($, on)
   await $.session.start(start)
   await call($, 'add', { items: [DEFECT] })
 
-  expect([...files.keys()][0]).toMatch(/^\/\.claude\/backlog\/items\/[a-z0-9]{8}\./)
+  expect([...files.keys()][0]).toMatch(/^\/\.claude\/wip\/items\/[a-z0-9]{8}\./)
 })
 
 test('a folder that cannot be listed is logged at start, and the polls after a failure catch up', async ($, on) => {
@@ -2404,7 +2414,7 @@ test('a folder that cannot be listed is logged at start, and the polls after a f
   expect(logs).toHaveLength(1)
   // The engine answers a listing its hook failed as one with no answer.
   expect(logs[0]).toMatch(
-    /^backlog: could not read the backlog folder: .*fs\.list/,
+    /^wip: could not read the WIP folder: .*fs\.list/,
   )
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   expect(await counts(ui)).toBe('0 open')
@@ -2424,7 +2434,7 @@ test('a folder that cannot be listed is logged at start, and the polls after a f
     'Recorded during the failure',
     'Recorded before the failure',
   ])
-  expect(toasts).toEqual(['Backlog: Recorded during the failure (app)'])
+  expect(toasts).toEqual(['WIP: Recorded during the failure (app)'])
   expect(logs).toHaveLength(1)
   await ui.unmount()
 })
@@ -2813,7 +2823,7 @@ test('a title too long for its row is cut to fit with an ellipsis, and shown who
 })
 
 for (const surface of ['terminal', 'desktop'] as const) {
-  test(`the band on the ${surface} shows backlog: and this project's counts, and follows them`, async ($, on) => {
+  test(`the band on the ${surface} shows wip: and this project's counts, and follows them`, async ($, on) => {
     const { clock, ids } = world(on, '/work/app', 'enter', {
       surfaces: [surface],
     })
@@ -2821,7 +2831,7 @@ for (const surface of ['terminal', 'desktop'] as const) {
     await call($, 'add', { items: [DEFECT, DECISION] })
     const [defect, decision] = ids()
     const bar = await $.ui.mount({ ...BAND, surface })
-    expect((await bar.find({ key: 'toggle' }))?.text).toBe('backlog:')
+    expect((await bar.find({ key: 'toggle' }))?.text).toBe('wip:')
     expect(await band(bar)).toBe('2 open, ● 2 new, 1 to decide')
 
     const ui = await $.ui.mount({ ...PANE, surface })
@@ -2911,11 +2921,64 @@ test('counts too wide for the band are cut to one row', async ($, on) => {
     surface: 'terminal',
     props: { ...BAND.props, bodyColumns: 30 },
   })
-  expect(await band(bar)).toBe('2 open, ● 2 new, 1 t…')
+  expect(await band(bar)).toBe('2 open, ● 2 new, 1 to de…')
   await bar.unmount()
 })
 
-test('pressing backlog: closes the pane when it is shown, and opens it with focus when it is not', async ($, on) => {
+test('the pane opens by itself on the fullscreen terminal, once, and not on the main screen', async ($, on) => {
+  const { opened } = world(on)
+  await $.session.start(start)
+  // Nothing opens before a drawing says whether its surface docks a pane.
+  expect(opened).toEqual([])
+
+  const { viewport: _, ...unknown } = BAND
+  await (await $.ui.mount({ ...unknown, surface: 'terminal' })).unmount()
+  expect(opened).toEqual([])
+
+  await (await $.ui.mount({ ...BAND, surface: 'terminal' })).unmount()
+  await (await $.ui.mount({ ...BAND, surface: 'terminal' })).unmount()
+  expect(opened).toEqual([{ id: 'wip', focus: undefined }])
+})
+
+test('on the main screen the pane waits for the person, and /wip then opens it', async ($, on) => {
+  const { opened } = world(on)
+  await $.session.start(start)
+  const main = { ...BAND, surface: 'terminal', viewport: MAIN_SCREEN } as const
+  await (await $.ui.mount(main)).unmount()
+  await (await $.ui.mount({ ...BAND, surface: 'terminal' })).unmount()
+  expect(opened).toEqual([])
+
+  await slashWip($)
+  expect(opened).toEqual([{ id: 'wip', focus: true }])
+})
+
+test('an open the person asks for asks for the rows the list takes, or for an item as many as there are', async ($, on) => {
+  const { rows, ids } = world(on)
+  await $.session.start(start)
+
+  // The header's three rows and the two that say nothing is open.
+  await slashWip($)
+  expect(rows.at(-1)).toBe(6)
+
+  // The header, then for each group a blank row, its heading and its item.
+  await call($, 'add', { items: [DEFECT, DECISION] })
+  await slashWip($)
+  expect(rows.at(-1)).toBe(9)
+
+  // A folded group is its blank row and heading alone.
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await ui.press({ key: 'group:decision' })
+  await slashWip($)
+  expect(rows.at(-1)).toBe(8)
+
+  const [id] = ids()
+  await ui.press({ key: `open:${id}` })
+  await slashWip($)
+  expect(rows.at(-1)).toBe(60)
+  await ui.unmount()
+})
+
+test('pressing wip: closes the pane when it is shown, and opens it with focus when it is not', async ($, on) => {
   const { opened, closed, pane } = world(on)
   await $.session.start(start)
   await call($, 'add', { items: [DEFECT] })
@@ -2923,19 +2986,19 @@ test('pressing backlog: closes the pane when it is shown, and opens it with focu
   expect(pane()?.isShown).toBe(true)
 
   await bar.press({ key: 'toggle' })
-  expect(closed).toEqual(['backlog'])
+  expect(closed).toEqual(['wip'])
   expect(pane()).toBeUndefined()
 
   await bar.press({ key: 'toggle' })
-  expect(opened.at(-1)).toEqual({ id: 'backlog', focus: true })
+  expect(opened.at(-1)).toEqual({ id: 'wip', focus: true })
   expect(pane()?.isShown).toBe(true)
 
   await bar.press({ key: 'toggle' })
-  expect(closed).toEqual(['backlog', 'backlog'])
+  expect(closed).toEqual(['wip', 'wip'])
   await bar.unmount()
 })
 
-test('pressing backlog: raises the pane when it is a tab behind another, or waits unplaced', async ($, on) => {
+test('pressing wip: raises the pane when it is a tab behind another, or waits unplaced', async ($, on) => {
   const { opened, closed, seat } = world(on)
   await $.session.start(start)
   await call($, 'add', { items: [DEFECT] })
@@ -2945,14 +3008,14 @@ test('pressing backlog: raises the pane when it is a tab behind another, or wait
     seat(state)
     const before = opened.length
     await bar.press({ key: 'toggle' })
-    expect(opened.slice(before)).toEqual([{ id: 'backlog', focus: true }])
+    expect(opened.slice(before)).toEqual([{ id: 'wip', focus: true }])
   }
 
   expect(closed).toEqual([])
   await bar.unmount()
 })
 
-test('pressing backlog: says why when the host does not place the pane', async ($, on) => {
+test('pressing wip: says why when the host does not place the pane', async ($, on) => {
   const { toasts, opened } = world(on, '/work/app', 'enter', {
     notPlaced: 'the terminal is too narrow',
   })
@@ -2961,14 +3024,14 @@ test('pressing backlog: says why when the host does not place the pane', async (
   const bar = await $.ui.mount({ ...BAND, surface: 'terminal' })
 
   await bar.press({ key: 'toggle' })
-  expect(opened.at(-1)).toEqual({ id: 'backlog', focus: true })
+  expect(opened.at(-1)).toEqual({ id: 'wip', focus: true })
   expect(toasts.at(-1)).toBe(
-    'Backlog: the pane is not shown: the terminal is too narrow',
+    'WIP: the pane is not shown: the terminal is too narrow',
   )
   await bar.unmount()
 })
 
-test('pressing backlog: when a hook keeps the pane open says so, and the press settles', async ($, on) => {
+test('pressing wip: when a hook keeps the pane open says so, and the press settles', async ($, on) => {
   const { toasts, closed, pane } = world(on, '/work/app', 'enter', {
     closeRefused: 'a review is open in it',
   })
@@ -2979,11 +3042,11 @@ test('pressing backlog: when a hook keeps the pane open says so, and the press s
   await bar.press({ key: 'toggle' })
   expect(closed).toEqual([])
   expect(pane()?.isShown).toBe(true)
-  expect(toasts.at(-1)).toBe('Backlog: the pane stays open: a review is open in it')
+  expect(toasts.at(-1)).toBe('WIP: the pane stays open: a review is open in it')
   await bar.unmount()
 })
 
-test('pressing backlog: opens the pane while the folder cannot be read', async ($, on) => {
+test('pressing wip: opens the pane while the folder cannot be read', async ($, on) => {
   const { opened, toasts, ids, failListing } = world(on)
   await $.session.start(start)
   await call($, 'add', { items: [DEFECT] })
@@ -2994,7 +3057,7 @@ test('pressing backlog: opens the pane while the folder cannot be read', async (
 
   failListing(1)
   await bar.press({ key: 'toggle' })
-  expect(opened.at(-1)).toEqual({ id: 'backlog', focus: true })
+  expect(opened.at(-1)).toEqual({ id: 'wip', focus: true })
   expect(toasts).toHaveLength(toastsBefore)
   await bar.unmount()
 })
@@ -3077,16 +3140,16 @@ test('a batch the folder refuses part way through says what was recorded and wha
 
   const [said, ...listed] = String(partial.deny).split('\n')
   expect(said).toMatch(
-    /^The backlog could not be written: .*ENOSPC: no space left on device\. Not recorded: "Three" and the 2 items after it\. Send those again; what is listed here needs no resending\.$/,
+    /^The WIP list could not be written: .*ENOSPC: no space left on device\. Not recorded: "Three" and the 2 items after it\. Send those again; what is listed here needs no resending\.$/,
   )
   expect(listed).toEqual([
     'Recorded before the failure:',
     `- ${one}: One`,
     `- ${two}: Two`,
   ])
-  expect(toasts).toEqual(['Backlog: 2 items recorded'])
+  expect(toasts).toEqual(['WIP: 2 items recorded'])
 
-  // What was recorded is on the backlog at once, not on the next poll.
+  // What was recorded is on the WIP list at once, not on the next poll.
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   expect(await rows(ui)).toEqual(['Two', 'One'])
   await ui.unmount()
@@ -3095,9 +3158,9 @@ test('a batch the folder refuses part way through says what was recorded and wha
   const [, , three, four, five] = ids()
   expect(String(again.result)).toBe(
     [
-      'Recorded on the backlog:',
-      `- ${one}: already on the backlog, refreshed`,
-      `- ${two}: already on the backlog, refreshed`,
+      'Recorded on the WIP list:',
+      `- ${one}: already on the WIP list, refreshed`,
+      `- ${two}: already on the WIP list, refreshed`,
       `- ${three}: Three`,
       `- ${four}: Four`,
       `- ${five}: Five`,
@@ -3117,7 +3180,7 @@ test('a batch whose last write the folder refuses names the one item to send aga
 
   expect(String(partial.deny).split('\n')).toEqual([
     expect.stringMatching(
-      /^The backlog could not be written: .*ENOSPC.*\. Not recorded: "Two"\. Send it again; what is listed here needs no resending\.$/,
+      /^The WIP list could not be written: .*ENOSPC.*\. Not recorded: "Two"\. Send it again; what is listed here needs no resending\.$/,
     ),
     'Recorded before the failure:',
     '- skipped an item with no title',
@@ -3134,7 +3197,7 @@ test('a batch whose first write the folder refuses is refused whole, and truly r
     const refused = await call($, 'add', { items })
 
     expect(refused.deny).toMatch(
-      /^The backlog could not be read or written: .*ENOSPC: no space left on device\. Nothing was recorded or changed\.$/,
+      /^The WIP list could not be read or written: .*ENOSPC: no space left on device\. Nothing was recorded or changed\.$/,
     )
     refuseWrites(0)
   }
@@ -3149,7 +3212,7 @@ test('a pane action the folder refuses is said in a toast, the item and the view
   await call($, 'add', { items: [DEFECT] })
   const id = ids()[0] ?? ''
   const notChanged = new RegExp(
-    `^Backlog: ${id} was not changed \\(.+\\)\\. Press the action again\\.$`,
+    `^WIP: ${id} was not changed \\(.+\\)\\. Press the action again\\.$`,
   )
 
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
@@ -3211,7 +3274,7 @@ test('an item sent to Claude that the folder then refuses to mark is said to be 
   expect(prompts).toHaveLength(1)
   expect(toasts.at(-1)).toMatch(
     new RegExp(
-      `^Backlog: ${id} was sent to Claude, but is not marked in progress \\(.+\\)\\.$`,
+      `^WIP: ${id} was sent to Claude, but is not marked in progress \\(.+\\)\\.$`,
     ),
   )
   expect(toasts.some(toast => toast.startsWith('Sent to Claude'))).toBe(false)
@@ -3250,7 +3313,7 @@ test('a session that ends gives back the items it had in progress, with a note, 
 
   expect(await full($, defect ?? '')).toBe(
     [
-      `Backlog item ${defect} (defect, high priority, open): Retry loop never backs off`,
+      `WIP item ${defect} (defect, high priority, open): Retry loop never backs off`,
       'Recorded in /work/app.',
       'src/retry.ts:40 retries at once, forever.',
       'Note, 2023-11-14: Released: the session working on it ended.',
@@ -3392,12 +3455,12 @@ test('Claude is told to give an item back when it stops work on it unfinished', 
     model: 'claude-test',
     promptModel: 'claude-test',
     surfaces: ['terminal'],
-    tools: ['mcp__backlog__add'],
+    tools: ['mcp__wip__add'],
     outputStyle: null,
     traits: [],
   })
   expect(
-    composed.sections.find(one => one.id === 'backlog:tracking')?.text,
+    composed.sections.find(one => one.id === 'wip:tracking')?.text,
   ).toMatch(
     'When you stop work on an item without finishing it, set its status back to "open" with a note saying what is left.',
   )
@@ -3435,7 +3498,7 @@ test('an item whose title is over the limit is skipped whole, never cut, and one
   expect(ids()).toHaveLength(2)
   expect(String(added.result)).toBe(
     [
-      'Recorded on the backlog:',
+      'Recorded on the WIP list:',
       `- skipped "${'s'.repeat(59)}…": its title is 201 characters and the limit is 200`,
       `- skipped "${'s'.repeat(59)}…": its title is 201 characters and the limit is 200`,
       `- ${kept}: ${atLimit}`,
@@ -3444,7 +3507,7 @@ test('an item whose title is over the limit is skipped whole, never cut, and one
   )
   expect([...files.values()].some(text => text.includes('sss'))).toBe(false)
   expect(await full($, kept ?? '')).toMatch(`: ${atLimit}\n`)
-  expect(toasts).toEqual(['Backlog: 2 items recorded'])
+  expect(toasts).toEqual(['WIP: 2 items recorded'])
 })
 
 test('an item with more options than the limit is skipped whole, and one with nine is kept whole', async ($, on) => {
@@ -3469,7 +3532,7 @@ test('an item with more options than the limit is skipped whole, and one with ni
   expect(ids()).toHaveLength(1)
   expect(String(added.result)).toBe(
     [
-      'Recorded on the backlog:',
+      'Recorded on the WIP list:',
       '- skipped "Ten ways": it has 10 options and the limit is 9',
       `- ${id}: Nine ways`,
     ].join('\n'),
@@ -3584,11 +3647,11 @@ test('recording an open item again under another category moves it there, with t
   })
 
   expect(String(again.result)).toBe(
-    `Recorded on the backlog:\n- ${id}: already on the backlog, refreshed, and moved from defect to decision`,
+    `Recorded on the WIP list:\n- ${id}: already on the WIP list, refreshed, and moved from defect to decision`,
   )
   expect(ids()).toEqual([id])
   expect(await full($, id)).toMatch(
-    `Backlog item ${id} (decision, high priority, open): Retry loop never backs off`,
+    `WIP item ${id} (decision, high priority, open): Retry loop never backs off`,
   )
   expect(await ui.find({ key: 'group:defect' })).toBeUndefined()
   expect(await ui.find({ key: 'group:decision' })).toBeDefined()
@@ -3611,17 +3674,14 @@ test('recording an open item again under another category moves it there, with t
   for (const category of ['decision', 'chore']) {
     const same = await call($, 'add', { items: [{ ...DEFECT, category }] })
     expect(String(same.result)).toBe(
-      `Recorded on the backlog:\n- ${id}: already on the backlog, refreshed`,
+      `Recorded on the WIP list:\n- ${id}: already on the WIP list, refreshed`,
     )
     expect(await full($, id)).toMatch('(decision, high priority, open)')
   }
 })
 
 const LINK =
-  'https://github.com/endjin/endjin-marketplace/blob/main/plugins/backlog/README.md'
-const FULLSCREEN = { columns: 100, rows: 40, isFullscreen: true }
-const MAIN_SCREEN = { columns: 100, rows: 40, isFullscreen: false }
-
+  'https://github.com/endjin/endjin-marketplace/blob/main/plugins/wip/README.md'
 // Where a link the mod draws for an item points, and the link as written.
 const hrefTo = (id: string) => `${LINK}#${id}`
 const linkTo = (id: string) => `[${id}](${hrefTo(id)})`
@@ -3639,7 +3699,7 @@ const reply = (
   } = {},
 ) =>
   $.ui.mount({
-    plugin: 'backlog',
+    plugin: 'wip',
     component: 'AssistantMessage',
     surface,
     requestId: 'message-1',
@@ -3670,7 +3730,7 @@ const leaves = async (ui: Drawing) =>
   (await ui.find({ key: 'beneath' })) !== undefined &&
   (await markdown(ui)) === undefined
 
-// A backlog of three: one open here, one done here, one open in another
+// A WIP list of three: one open here, one done here, one open in another
 // project, all read by the session.
 const three = async ($: Engine, on: On, setting: Setting = {}) => {
   const held = world(on, '/work/app', 'enter', setting)
@@ -3718,7 +3778,7 @@ for (const surface of ['terminal', 'desktop'] as const) {
     const key = await keyOf(ui)
 
     await ui.press({ key, link: { href: hrefTo(open) } })
-    expect(opened.at(-1)).toEqual({ id: 'backlog', focus: true })
+    expect(opened.at(-1)).toEqual({ id: 'wip', focus: true })
 
     const pane = await $.ui.mount({ ...PANE, surface })
     expect(await pane.find({ key: 'back' })).toBeDefined()
@@ -3727,7 +3787,7 @@ for (const surface of ['terminal', 'desktop'] as const) {
     ).toBeDefined()
 
     await ui.press({ key, link: { href: hrefTo(other) } })
-    expect(opened.at(-1)).toEqual({ id: 'backlog', focus: true })
+    expect(opened.at(-1)).toEqual({ id: 'wip', focus: true })
     expect(
       await pane.find({ type: 'Text', text: 'Rate limit is undocumented' }),
     ).toBeDefined()
@@ -3810,7 +3870,7 @@ test('the first block of a reply draws its bullet, and a later block lines up be
   await later.unmount()
 })
 
-test('pressing the id of an item that has left the backlog says so, and opens nothing', async ($, on) => {
+test('pressing the id of an item that has left the WIP list says so, and opens nothing', async ($, on) => {
   const { files, filesOf, opened, toasts, done } = await three($, on)
   const ui = await reply($, 'terminal', `See ${done}.`)
   const key = await keyOf(ui)
@@ -3822,7 +3882,7 @@ test('pressing the id of an item that has left the backlog says so, and opens no
   }
 
   await ui.press({ key, link: { href: hrefTo(done) } })
-  expect(toasts.at(-1)).toBe(`Backlog: ${done} is no longer on the backlog`)
+  expect(toasts.at(-1)).toBe(`WIP: ${done} is no longer on the WIP list`)
   expect(opened).toHaveLength(before)
 
   // The read the press made has taken its link away.
@@ -3836,7 +3896,7 @@ test('pressing an id where the pane cannot be placed says why', async ($, on) =>
   const key = await keyOf(ui)
 
   await ui.press({ key, link: { href: hrefTo(open) } })
-  expect(toasts.at(-1)).toBe('Backlog: the pane is not shown: too narrow')
+  expect(toasts.at(-1)).toBe('WIP: the pane is not shown: too narrow')
   await ui.unmount()
 })
 
@@ -3895,7 +3955,7 @@ test('a long reply is drawn in pieces, and an id in a later piece is a link that
 
   const key = await keyOf(ui, pieces.length - 1)
   await ui.press({ key, link: { href: hrefTo(open) } })
-  expect(opened.at(-1)).toEqual({ id: 'backlog', focus: true })
+  expect(opened.at(-1)).toEqual({ id: 'wip', focus: true })
 
   const pane = await $.ui.mount({ ...PANE, surface: 'terminal' })
   expect(await pane.find({ key: 'back' })).toBeDefined()
@@ -3912,7 +3972,7 @@ test('pressing the id of a done item opens its detail view', async ($, on) => {
   const key = await keyOf(ui)
 
   await ui.press({ key, link: { href: hrefTo(done) } })
-  expect(opened.at(-1)).toEqual({ id: 'backlog', focus: true })
+  expect(opened.at(-1)).toEqual({ id: 'wip', focus: true })
 
   const pane = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect(await pane.find({ key: 'back' })).toBeDefined()
@@ -3924,7 +3984,7 @@ test('pressing the id of a done item opens its detail view', async ($, on) => {
 })
 
 test('a reply the mod fails to draw is left to the engine', async ($, on) => {
-  // Armed once the backlog is read, for the reply's own read.
+  // Armed once the WIP list is read, for the reply's own read.
   let isFailing = false
   on('state.get', ($, e, next) => {
     if (isFailing && e.key === 'ids') {
@@ -3944,7 +4004,7 @@ test('a reply the mod fails to draw is left to the engine', async ($, on) => {
   await ui.unmount()
 })
 
-test('a reply naming no item reads no state once the backlog is read, and one naming an item reads the ids once', async ($, on) => {
+test('a reply naming no item reads no state once the WIP list is read, and one naming an item reads the ids once', async ($, on) => {
   const reads: string[] = []
   on('state.get', ($, e, next) => {
     reads.push(String(e.key))
@@ -4119,7 +4179,7 @@ test('a session that sees a compacted record beside the files it replaces folds 
 
   expect(await full($, id)).toBe(
     [
-      `Backlog item ${id} (issue, low priority, open): Raced`,
+      `WIP item ${id} (issue, low priority, open): Raced`,
       'Recorded in /work/app.',
       'Resolution: Fixed.',
       `Note, ${day}: Looked into it.`,
@@ -4165,7 +4225,102 @@ test('on Windows the records a compaction replaced are removed with del, their p
   await clock.advance(5000)
   expect(filesOf('cl01cl01')).toHaveLength(1)
   expect(removals[0]?.slice(0, 5)).toEqual(['cmd', '/c', 'del', '/f', '/q'])
-  expect(removals[0]?.[5]).toMatch(/^\\home\\t\\\.claude\\backlog\\items\\cl01cl01\./)
+  expect(removals[0]?.[5]).toMatch(/^\\home\\t\\\.claude\\wip\\items\\cl01cl01\./)
+})
+
+// The folder the records were kept in while the plugin was called `backlog`,
+// and a record of one open item written there.
+const LEGACY = '/home/t/.claude/backlog/items'
+const legacy = (id: string, title: string) => [
+  `${LEGACY}/${id}.${(1_699_999_000_000).toString(36)}.old${id}.json`,
+  JSON.stringify({
+    id,
+    at: 1_699_999_000_000,
+    sessionId: 'session-0',
+    set: { title, category: 'task', priority: 'medium', status: 'open', project: '/work/app' },
+    note: '',
+  }),
+] as const
+
+test('a session start moves the records of the backlog folder into the WIP folder, and removes the old folder', async ($, on) => {
+  const { files, toasts, removals } = world(on)
+  for (const [path, text] of [legacy('mv01mv01', 'Moved one'), legacy('mv02mv02', 'Moved two')]) {
+    files.set(path, text)
+  }
+  await $.session.start(start)
+
+  expect([...files.keys()].filter(path => path.startsWith(`${LEGACY}/`))).toEqual([])
+  expect([...files.keys()].filter(path => path.startsWith(`${DIR}/`))).toHaveLength(2)
+  expect(toasts).toEqual(['WIP: moved 2 records from the backlog folder'])
+  expect(removals.slice(1)).toEqual([
+    ['rmdir', LEGACY],
+    ['rmdir', '/home/t/.claude/backlog'],
+  ])
+  const listed = String((await call($, 'list', {})).result)
+  expect(listed).toMatch('Moved one')
+  expect(listed).toMatch('Moved two')
+})
+
+test('a record the WIP folder already has is not written again, and its old copy is removed', async ($, on) => {
+  const { files, overwritten, toasts } = world(on)
+  const [path, text] = legacy('mv03mv03', 'Already here')
+  files.set(path, text)
+  files.set(path.replace(LEGACY, DIR), text)
+  await $.session.start(start)
+
+  expect(overwritten).toEqual([])
+  expect(files.has(path)).toBe(false)
+  expect(toasts).toEqual(['WIP: moved 1 record from the backlog folder'])
+})
+
+test('with no backlog folder a session start moves nothing and runs no command', async ($, on) => {
+  const { removals, toasts } = world(on)
+  await $.session.start(start)
+
+  expect(removals).toEqual([])
+  expect(toasts).toEqual([])
+})
+
+test('old records the host will not remove stay, are logged, and are moved again by the next session', async ($, on) => {
+  const { files, logs, failRemovals, overwritten } = world(on)
+  const [path, text] = legacy('mv04mv04', 'Stuck')
+  files.set(path, text)
+  failRemovals(1)
+  await $.session.start(start)
+
+  expect(files.has(path)).toBe(true)
+  expect(files.has(path.replace(LEGACY, DIR))).toBe(true)
+  expect(logs.at(-1)).toMatch(
+    /^wip: could not move the records from the backlog folder: 1 of 1 files are still there/,
+  )
+  expect(String((await call($, 'list', {})).result)).toMatch('Stuck')
+
+  await $.session.start(start)
+  expect(files.has(path)).toBe(false)
+  expect(overwritten).toEqual([])
+})
+
+test('on Windows the backlog folder is moved with del and rmdir, its paths spelt with backslashes', async ($, on) => {
+  const { files, removals } = world(on, '/work/app', 'enter', {
+    env: { HOME: '/home/t', OS: 'Windows_NT' },
+  })
+  const [path, text] = legacy('mv05mv05', 'On Windows')
+  files.set(path, text)
+  await $.session.start(start)
+
+  expect(removals[0]?.slice(0, 6)).toEqual([
+    'cmd',
+    '/c',
+    'del',
+    '/f',
+    '/q',
+    path.replace(/\//g, '\\'),
+  ])
+  expect(removals.slice(1)).toEqual([
+    ['cmd', '/c', 'rmdir', '\\home\\t\\.claude\\backlog\\items'],
+    ['cmd', '/c', 'rmdir', '\\home\\t\\.claude\\backlog'],
+  ])
+  expect(files.has(path)).toBe(false)
 })
 
 test('after a minute with nothing new the folder is listed every thirty seconds, and a prompt or a change brings every poll back', async ($, on) => {
@@ -4258,7 +4413,7 @@ test('a view an earlier version of the code wrote, with no folded sections, stil
     store: { collapsed: ['decision'] },
   })
   on('state.set', ($, e, next) => {
-    if (isStarting && e.plugin === 'backlog' && e.key === 'view') {
+    if (isStarting && e.plugin === 'wip' && e.key === 'view') {
       const { collapsed, ...older } = e.value as Record<string, unknown>
 
       return next({ ...e, value: older as typeof e.value })
@@ -4354,7 +4509,7 @@ test('an update of several items skips an entry it cannot take, says why in its 
   expect(String(updated.result)).toBe(
     [
       'Updated 1 item:',
-      '- skipped zz00zz00: no backlog item has that id',
+      '- skipped zz00zz00: no WIP item has that id',
       `- skipped ${a}: its note is 10001 characters and the limit is 10000`,
       `- skipped ${b}: nothing to change; give a status, priority, category, title, resolution or note`,
       '- skipped an entry with no id',
@@ -4381,14 +4536,14 @@ test('an update of several items with none to change says so, and one over the b
         .result,
     ),
   ).toBe(
-    'Nothing was changed. mcp__backlog__list gives the ids.\n- skipped zz00zz00: no backlog item has that id',
+    'Nothing was changed. mcp__wip__list gives the ids.\n- skipped zz00zz00: no WIP item has that id',
   )
   expect(
     await call($, 'update', {
       items: Array.from({ length: 51 }, () => ({ id, status: 'done' })),
     }),
   ).toEqual({
-    deny: 'mcp__backlog__update takes at most 50 items in one call and got 51. Nothing was changed: send them in batches.',
+    deny: 'mcp__wip__update takes at most 50 items in one call and got 51. Nothing was changed: send them in batches.',
   })
   expect(
     await call($, 'update', { id, items: [{ id, status: 'done' }] }),
@@ -4416,7 +4571,7 @@ test('an update of several items whose write fails part way says what changed an
   refuseWrites(1, 1)
   expect(String((await call($, 'update', { items: changes })).deny)).toMatch(
     new RegExp(
-      `^The backlog could not be written: .*ENOSPC: no space left on device\\. Not changed: ${b}, ${c}\\. Send those again; what is listed here needs no resending\\.\\nChanged before the failure:\\n- ${a}: in progress, high priority$`,
+      `^The WIP list could not be written: .*ENOSPC: no space left on device\\. Not changed: ${b}, ${c}\\. Send those again; what is listed here needs no resending\\.\\nChanged before the failure:\\n- ${a}: in progress, high priority$`,
     ),
   )
   expect(files.size).toBe(written + 1)
@@ -4425,7 +4580,7 @@ test('an update of several items whose write fails part way says what changed an
 
   refuseWrites(1)
   expect(String((await call($, 'update', { items: changes })).deny)).toMatch(
-    /^The backlog could not be read or written: .*ENOSPC: no space left on device\. Nothing was recorded or changed\.$/,
+    /^The WIP list could not be read or written: .*ENOSPC: no space left on device\. Nothing was recorded or changed\.$/,
   )
   expect(files.size).toBe(written + 1)
 })
@@ -4479,7 +4634,7 @@ test('an update whose turn comes after its budget ran out was answered as not in
   const second = await call($, 'update', { id: b, status: 'in_progress' })
   slowHost(0)
   expect(second).toEqual({
-    deny: 'The backlog could not be read or written: it did not answer in time. Nothing was recorded or changed.',
+    deny: 'The WIP list could not be read or written: it did not answer in time. Nothing was recorded or changed.',
   })
 
   expect(String((await first).result)).toBe(
