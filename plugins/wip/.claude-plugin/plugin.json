@@ -1,0 +1,13 @@
+{
+  "name": "wip",
+  "displayName": "WIP",
+  "description": "A Claude Code work-in-progress (WIP) pane that tracks the defects, issues, tasks and decisions your sessions turn up, grouped by category and priority, with a detail view to decide or direct the work.",
+  "author": {
+    "name": "endjin",
+    "url": "https://endjin.com"
+  },
+  "license": "MIT",
+  "keywords": ["mod", "pane", "wip", "work-in-progress", "todo", "decisions", "triage"],
+  "repository": "https://github.com/endjin/endjin-marketplace",
+  "types": "./types/index.d.ts"
+}

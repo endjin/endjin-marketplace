@@ -9,17 +9,17 @@ import type {
 } from 'claude-code'
 
 import type {
-  BacklogCategory,
-  BacklogChange,
-  BacklogFields,
-  BacklogItem,
-  BacklogOption,
-  BacklogPriority,
-  BacklogStatus,
-  BacklogView,
+  WipCategory,
+  WipChange,
+  WipFields,
+  WipItem,
+  WipOption,
+  WipPriority,
+  WipStatus,
+  WipView,
 } from '../types'
 
-const PANE = 'backlog'
+const PANE = 'wip'
 const POLL_MS = 5000
 // After this many polls in a row that list the folder and find nothing new,
 // it is listed on every SLOW_EVERY-th poll alone (every thirty seconds), until
@@ -42,25 +42,25 @@ const CATEGORIES = ['decision', 'defect', 'issue', 'task'] as const
 const PRIORITIES = ['critical', 'high', 'medium', 'low'] as const
 const STATUSES = ['open', 'in_progress', 'done', 'dismissed'] as const
 
-const HEADING: Record<BacklogCategory, string> = {
+const HEADING: Record<WipCategory, string> = {
   decision: 'Decisions',
   defect: 'Defects',
   issue: 'Issues',
   task: 'Tasks',
 }
-const TAG: Record<BacklogPriority, string> = {
+const TAG: Record<WipPriority, string> = {
   critical: 'CRIT',
   high: 'HIGH',
   medium: 'MED ',
   low: 'LOW ',
 }
-const STATUS: Record<BacklogStatus, string> = {
+const STATUS: Record<WipStatus, string> = {
   open: 'open',
   in_progress: 'in progress',
   done: 'done',
   dismissed: 'dismissed',
 }
-const MARK: Record<BacklogStatus, string> = {
+const MARK: Record<WipStatus, string> = {
   open: '',
   in_progress: '',
   done: '✓ ',
@@ -87,10 +87,13 @@ const COMPACT_MAX = 3
 const COMPACT_RETRY_MS = 10 * 60 * 1000
 // Paths handed to one removal command: well under a command line's room.
 const REMOVE_MAX = 40
+// The rows an item's detail view asks for while inline above the prompt: more
+// than most screens spare, so it takes what the layout gives.
+const DETAIL_ROWS = 60
 // Where no mod answers the press, the surface opens this page: a link not
 // https, http or file draws as text.
 const HREF_BASE =
-  'https://github.com/endjin/endjin-marketplace/blob/main/plugins/backlog/README.md'
+  'https://github.com/endjin/endjin-marketplace/blob/main/plugins/wip/README.md'
 // The most links one Markdown answers, the engine's own limit.
 const LINKS_MAX = 256
 // The longest reply linked here: the engine draws 100,000 characters in one
@@ -100,16 +103,16 @@ const DRAW_MAX = 90000
 // mirrors the engine's, not read from it: check it live.
 const BULLET = '⏺ '
 
-const GUIDANCE = `# Backlog
+const GUIDANCE = `# Work in progress
 
-The person keeps a backlog in a side pane, shared by all their Claude Code sessions. When a piece of work ends and leaves defects, issues, follow-up tasks or decisions only the person can make, record each with mcp__backlog__add as well as mentioning it in your reply; do the same when you reach a choice that is theirs to make. Do not record what you are about to do in this same turn.
+The person keeps a work-in-progress (WIP) list in a side pane, shared by all their Claude Code sessions. When a piece of work ends and leaves defects, issues, follow-up tasks or decisions only the person can make, record each with mcp__wip__add as well as mentioning it in your reply; do the same when you reach a choice that is theirs to make. Do not record what you are about to do in this same turn.
 
 The person reads an item later, away from this conversation, and may act on it from another session. Write its detail to stand alone: what you observed, where (file and line), why it matters. A decision carries its options with their trade-offs and your recommendation.
 
-When you start work on an item that is already on the backlog, call mcp__backlog__update with status "in_progress", so the pane shows it is being worked on. When you fix or settle an item, call mcp__backlog__update with status "done" and a one-line resolution. When you stop work on an item without finishing it, set its status back to "open" with a note saying what is left. Several items changing at once go in one mcp__backlog__update call, as \`items\`, not one call per item.`
+When you start work on an item that is already on the WIP list, call mcp__wip__update with status "in_progress", so the pane shows it is being worked on. When you fix or settle an item, call mcp__wip__update with status "done" and a one-line resolution. When you stop work on an item without finishing it, set its status back to "open" with a note saying what is left. Several items changing at once go in one mcp__wip__update call, as \`items\`, not one call per item.`
 
-const items = atom({ plugin: 'backlog', key: 'items' } as const, [])
-const view = atom({ plugin: 'backlog', key: 'view' } as const, {
+const items = atom({ plugin: 'wip', key: 'items' } as const, [])
+const view = atom({ plugin: 'wip', key: 'view' } as const, {
   selected: null,
   scope: 'project',
   showClosed: false,
@@ -120,7 +123,7 @@ const view = atom({ plugin: 'backlog', key: 'view' } as const, {
 const COLLAPSED = 'collapsed'
 
 // The categories among `raw`, each once, in their fixed order.
-const toCategories = (raw: unknown): BacklogCategory[] =>
+const toCategories = (raw: unknown): WipCategory[] =>
   CATEGORIES.filter(
     category => Array.isArray(raw) && raw.includes(category),
   )
@@ -131,7 +134,7 @@ const toCategories = (raw: unknown): BacklogCategory[] =>
 // sections is read through `toCategories`, never trusted to be there.
 const collapse = async (
   $: EngineInterface,
-  category: BacklogCategory,
+  category: WipCategory,
 ): Promise<void> => {
   const held = await update($, view, one => {
     const collapsed = toCategories(one.collapsed)
@@ -147,23 +150,23 @@ const collapse = async (
   try {
     await $.store.set(COLLAPSED, held.collapsed)
   } catch (error) {
-    $.ui.log(`backlog: could not remember the folded sections: ${reason(error)}`, {
+    $.ui.log(`wip: could not remember the folded sections: ${reason(error)}`, {
       to: 'debug',
     })
   }
 }
-const project = atom({ plugin: 'backlog', key: 'project' } as const, '')
-const fresh = atom({ plugin: 'backlog', key: 'fresh' } as const, [])
-const aged = atom({ plugin: 'backlog', key: 'aged' } as const, {})
-const ids = atom({ plugin: 'backlog', key: 'ids' } as const, [])
+const project = atom({ plugin: 'wip', key: 'project' } as const, '')
+const fresh = atom({ plugin: 'wip', key: 'fresh' } as const, [])
+const aged = atom({ plugin: 'wip', key: 'aged' } as const, {})
+const ids = atom({ plugin: 'wip', key: 'ids' } as const, [])
 
 // File name to the change record last read from it; `stamp` is the listing's
 // time and size, '' for a file this session just wrote.
-const records = new Map<string, { stamp: string; change: BacklogChange }>()
+const records = new Map<string, { stamp: string; change: WipChange }>()
 const unreadable = new Map<string, string>()
 // The items as `records` fold, kept until a record is read, written or
 // dropped: a poll that finds nothing changed folds nothing.
-let folded: BacklogItem[] | undefined
+let folded: WipItem[] | undefined
 // The ids of every item as of the last publish, read by the replies that
 // link ids without a trip to the host; empty until the folder was first read.
 let knownIds: ReadonlySet<string> = new Set()
@@ -173,6 +176,9 @@ let hasLoaded = false
 let lastAt = 0
 let queue: Promise<unknown> = Promise.resolve()
 let polling: Timer | undefined
+// Set at session start until a band drawing says whether its surface docks a
+// pane: the pane opens unasked only where it would sit beside the transcript.
+let isOpening = false
 // Listing polls in a row that found nothing new, and polls skipped since the
 // last listing while idle.
 let idle = 0
@@ -260,7 +266,7 @@ const toPath = (path: string): string => slash(clean(path, 1000))
 // The options `raw` gives that have a label, the first `most` of them. A
 // record read from the folder is held to the limit; a draft is counted whole,
 // and refused when over it.
-const toOptions = (raw: unknown, most = OPTIONS_MAX): BacklogOption[] =>
+const toOptions = (raw: unknown, most = OPTIONS_MAX): WipOption[] =>
   (Array.isArray(raw) ? raw : [])
     .map(one => {
       const fields = typeof one === 'string' ? { label: one } : record(one)
@@ -275,8 +281,8 @@ const toOptions = (raw: unknown, most = OPTIONS_MAX): BacklogOption[] =>
 
 // The fields `raw` names, each held to its shape; one it leaves out, or names
 // with a value of the wrong kind, is left out.
-const toFields = (raw: Record<string, unknown>): Partial<BacklogFields> => {
-  const set: Partial<BacklogFields> = {}
+const toFields = (raw: Record<string, unknown>): Partial<WipFields> => {
+  const set: Partial<WipFields> = {}
   const title = oneLine(raw.title, TITLE_MAX)
   const category = CATEGORIES.find(one => one === raw.category)
   const priority = PRIORITIES.find(one => one === raw.priority)
@@ -372,7 +378,7 @@ const ID = /^[a-z0-9]{4,12}$/
 const isTime = (at: unknown): at is number =>
   typeof at === 'number' && Number.isFinite(at) && at > 0
 
-const toChange = (raw: unknown): BacklogChange | undefined => {
+const toChange = (raw: unknown): WipChange | undefined => {
   const fields = record(raw)
   const id = typeof fields.id === 'string' && ID.test(fields.id) ? fields.id : ''
   // The first version of this mod kept an item as one whole file, `<id>.json`,
@@ -388,7 +394,7 @@ const toChange = (raw: unknown): BacklogChange | undefined => {
     return undefined
   }
 
-  const change: BacklogChange = {
+  const change: WipChange = {
     id,
     at,
     sessionId: oneLine(fields.sessionId, 100),
@@ -423,7 +429,7 @@ const toChange = (raw: unknown): BacklogChange | undefined => {
 const RECORD_NAME = /^[a-z0-9]{4,12}(?:\.[a-z0-9]+\.[a-z0-9]+)?\.json$/
 
 // The fields a compacting record sets: every one, as the item stands.
-const fieldsOf = (item: BacklogItem): BacklogFields => ({
+const fieldsOf = (item: WipItem): WipFields => ({
   title: item.title,
   category: item.category,
   priority: item.priority,
@@ -439,13 +445,13 @@ const fieldsOf = (item: BacklogItem): BacklogFields => ({
 // the fields they name, so a note from one session and a status from another
 // both stand, whichever was written first. Folded once per change to
 // `records`; the callers never alter what they are given.
-const fold = (): BacklogItem[] => {
+const fold = (): WipItem[] => {
   folded ??= foldAll()
 
   return folded
 }
 
-const foldAll = (): BacklogItem[] => {
+const foldAll = (): WipItem[] => {
   // A file a compacting record replaces applies no more, though it is still
   // listed: a session that sees both folds the item once. At one time the
   // compacting record goes first, so a change made at that moment by a
@@ -458,7 +464,7 @@ const foldAll = (): BacklogItem[] => {
     }
   }
 
-  const rank = (change: BacklogChange) => (change.folds === undefined ? 1 : 0)
+  const rank = (change: WipChange) => (change.folds === undefined ? 1 : 0)
   const ordered = [...records.entries()]
     .filter(([name]) => !replaced.has(name))
     .sort(
@@ -467,10 +473,10 @@ const foldAll = (): BacklogItem[] => {
         rank(a.change) - rank(b.change) ||
         (nameA < nameB ? -1 : 1),
     )
-  const byId = new Map<string, BacklogItem>()
+  const byId = new Map<string, WipItem>()
 
   for (const [, { change }] of ordered) {
-    const found: BacklogItem = byId.get(change.id) ?? {
+    const found: WipItem = byId.get(change.id) ?? {
       id: change.id,
       title: '',
       category: 'task',
@@ -490,7 +496,7 @@ const foldAll = (): BacklogItem[] => {
     }
     // A compacting record carries the notes and the first time whole, in
     // place of what the files it replaced built up.
-    const held: BacklogItem =
+    const held: WipItem =
       change.folds === undefined
         ? found
         : {
@@ -529,16 +535,16 @@ const nameOf = (path: string): string => {
     : (parts.at(-1) ?? path)
 }
 
-const isOpen = (item: BacklogItem): boolean =>
+const isOpen = (item: WipItem): boolean =>
   item.status === 'open' || item.status === 'in_progress'
 
 // Working outranks new: an item in progress is never also marked new.
-const isFresh = (item: BacklogItem, now: number): boolean =>
+const isFresh = (item: WipItem, now: number): boolean =>
   item.status === 'open' && now - item.createdAt < FRESH_MS
 
 // How many whole days an item has been in progress, 0 under one day. A claim
 // that old may be one a session left behind when it crashed.
-const daysHeld = (item: BacklogItem, now: number): number =>
+const daysHeld = (item: WipItem, now: number): number =>
   item.status === 'in_progress' && item.workingSince > 0
     ? Math.max(0, Math.floor((now - item.workingSince) / DAY_MS))
     : 0
@@ -552,7 +558,7 @@ const fit = (text: string, width: number): string =>
 const day = (at: number): string =>
   at > 0 ? new Date(at).toISOString().slice(0, 10) : ''
 
-const byUrgency = (a: BacklogItem, b: BacklogItem): number =>
+const byUrgency = (a: WipItem, b: WipItem): number =>
   Number(isOpen(b)) - Number(isOpen(a)) ||
   PRIORITIES.indexOf(a.priority) - PRIORITIES.indexOf(b.priority) ||
   b.updatedAt - a.updatedAt
@@ -773,8 +779,8 @@ const linkedPieces = (
       : [linked]
   })
 
-// The first of these that is set and not empty holds the backlog. With none,
-// there is no backlog: a guess, such as `/.claude`, would be a folder no other
+// The first of these that is set and not empty holds the WIP list. With none,
+// there is no WIP list: a guess, such as `/.claude`, would be a folder no other
 // session reads.
 const folder = async ($: EngineInterface): Promise<string> => {
   if (home !== '') {
@@ -782,9 +788,9 @@ const folder = async ($: EngineInterface): Promise<string> => {
   }
 
   const places = [
-    [await $.env.get('CLAUDE_CONFIG_DIR'), 'backlog/items'],
-    [await $.env.get('USERPROFILE'), '.claude/backlog/items'],
-    [await $.env.get('HOME'), '.claude/backlog/items'],
+    [await $.env.get('CLAUDE_CONFIG_DIR'), 'wip/items'],
+    [await $.env.get('USERPROFILE'), '.claude/wip/items'],
+    [await $.env.get('HOME'), '.claude/wip/items'],
   ] as const
 
   for (const [base, under] of places) {
@@ -799,6 +805,11 @@ const folder = async ($: EngineInterface): Promise<string> => {
     'no home directory was found: CLAUDE_CONFIG_DIR, USERPROFILE and HOME are all unset or empty',
   )
 }
+
+// The folder the records were kept in while the plugin was called `backlog`,
+// beside the one `folder` names.
+const legacyOf = (dir: string): string =>
+  `${dir.slice(0, -'wip/items'.length)}backlog/items`
 
 // What went wrong, without the `Error:` its text starts with.
 const reason = (error: unknown): string =>
@@ -822,13 +833,13 @@ const refuse = (
   __: unknown,
   next: { error: { message?: string } },
 ) => ({
-  deny: `The backlog could not be read or written: ${reason(next.error.message ?? 'it did not answer in time')}. Nothing was recorded or changed.`,
+  deny: `The WIP list could not be read or written: ${reason(next.error.message ?? 'it did not answer in time')}. Nothing was recorded or changed.`,
 })
 
 const load = async (
   $: EngineInterface,
   path: string,
-): Promise<BacklogChange | undefined> => {
+): Promise<WipChange | undefined> => {
   try {
     return toChange(JSON.parse(await $.fs.read(path)))
   } catch {
@@ -853,7 +864,7 @@ const place = async ($: EngineInterface): Promise<boolean> => {
 }
 
 // The ids of the items new as of `now`, in a stable order.
-const freshOf = (all: BacklogItem[], now: number): string[] =>
+const freshOf = (all: WipItem[], now: number): string[] =>
   all
     .filter(one => isFresh(one, now))
     .map(one => one.id)
@@ -868,7 +879,7 @@ const isFreshLevel = async (
 
 // How many whole days each item in progress has been so, by id in a stable
 // order; an item under one day has no entry.
-const agedOf = (all: BacklogItem[], now: number): Record<string, number> =>
+const agedOf = (all: WipItem[], now: number): Record<string, number> =>
   Object.fromEntries(
     all
       .map(one => [one.id, daysHeld(one, now)] as const)
@@ -892,7 +903,7 @@ type Counts = {
 }
 
 // How many of `open` there are, and of them in progress, new and to decide.
-const tally = (open: BacklogItem[], freshIds: readonly string[]): Counts => ({
+const tally = (open: WipItem[], freshIds: readonly string[]): Counts => ({
   open: open.length,
   working: open.filter(one => one.status === 'in_progress').length,
   recent: open.filter(one => freshIds.includes(one.id)).length,
@@ -956,7 +967,7 @@ const flag = async ($: EngineInterface): Promise<void> => {
   $.ui.status(counts.open === 0 || isBanded ? undefined : spell(counts, false))
 }
 
-const publish = async ($: EngineInterface): Promise<BacklogItem[]> => {
+const publish = async ($: EngineInterface): Promise<WipItem[]> => {
   const all = fold()
   const now = await $.clock.now()
   await update($, items, () => all)
@@ -993,7 +1004,7 @@ const publish = async ($: EngineInterface): Promise<BacklogItem[]> => {
 const append = async (
   $: EngineInterface,
   id: string,
-  set: Partial<BacklogFields>,
+  set: Partial<WipFields>,
   note = '',
 ): Promise<void> => {
   const seen = [...records.values()]
@@ -1003,7 +1014,7 @@ const append = async (
   lastAt = at
 
   const name = `${id}.${at.toString(36)}.${token(8)}.json`
-  const change: BacklogChange = {
+  const change: WipChange = {
     id,
     at,
     sessionId: await $.session.id(),
@@ -1107,8 +1118,8 @@ const level = async (
     if (hasLoaded && first !== undefined) {
       $.ui.toast(
         arrived.length === 1
-          ? `Backlog: ${fit(first.title, 60)} (${nameOf(first.project)})`
-          : `Backlog: ${arrived.length} new items from other sessions`,
+          ? `WIP: ${fit(first.title, 60)} (${nameOf(first.project)})`
+          : `WIP: ${arrived.length} new items from other sessions`,
       )
     }
   }
@@ -1145,13 +1156,29 @@ const poll = async ($: EngineInterface): Promise<void> => {
 // calls write and read, and never remove. `del` on Windows, `rm` elsewhere.
 // Neither's exit code is trusted (`del` exits 0 whatever it did): each file is
 // looked for afterwards, and one still there fails the call.
-const remove = async (
+const remove = (
   $: EngineInterface,
   dir: string,
   names: string[],
+): Promise<void> =>
+  erase($, dir, names, name => {
+    records.delete(name)
+    unreadable.delete(name)
+    swept.add(name)
+  })
+
+const isWindowsAt = async ($: EngineInterface, dir: string): Promise<boolean> =>
+  (await $.env.get('OS')) === 'Windows_NT' || /^[A-Za-z]:\//.test(dir)
+
+// Removes files of `dir` by name, as `remove` says, and calls `gone` with each
+// one it finds removed.
+const erase = async (
+  $: EngineInterface,
+  dir: string,
+  names: string[],
+  gone: (name: string) => void,
 ): Promise<void> => {
-  const isWindows =
-    (await $.env.get('OS')) === 'Windows_NT' || /^[A-Za-z]:\//.test(dir)
+  const isWindows = await isWindowsAt($, dir)
 
   for (let from = 0; from < names.length; from += REMOVE_MAX) {
     const batch = names.slice(from, from + REMOVE_MAX)
@@ -1178,9 +1205,7 @@ const remove = async (
         continue
       }
 
-      records.delete(name)
-      unreadable.delete(name)
-      swept.add(name)
+      gone(name)
     }
 
     folded = undefined
@@ -1191,6 +1216,50 @@ const remove = async (
       )
     }
   }
+}
+
+// Moves the records kept while the plugin was called `backlog` into the folder
+// it reads now, and says how many it moved. A record is written once and never
+// rewritten, so each is copied whole, and skipped when the folder already has
+// a file of its name. The old files are removed once every copy is written: a
+// session that stops part way leaves them for the next to move. Then the old
+// folder, and the one above it, go if they are empty. Runs at each session
+// start, so records a session of the earlier version writes later move too.
+// Runs inside the queue, before the first listing.
+const migrate = async ($: EngineInterface): Promise<number> => {
+  // With no folder there is nothing to move to: the first listing says why.
+  const dir = await folder($).catch(() => '')
+  const old = legacyOf(dir)
+
+  if (dir === '' || !(await $.fs.exists(old))) {
+    return 0
+  }
+
+  const names = (await $.fs.list(old))
+    .filter(entry => entry.kind === 'file' && entry.name.endsWith('.json'))
+    .map(entry => entry.name)
+
+  for (const name of names) {
+    if (!(await $.fs.exists(`${dir}/${name}`))) {
+      await $.fs.write(`${dir}/${name}`, await $.fs.read(`${old}/${name}`))
+    }
+  }
+
+  await erase($, old, names, () => undefined)
+
+  // `rmdir` removes a folder only when it is empty, so one that holds anything
+  // else stays, and its refusal is not an error.
+  const isWindows = await isWindowsAt($, old)
+
+  for (const path of [old, old.slice(0, -'/items'.length)]) {
+    await $.process.run(
+      isWindows
+        ? ['cmd', '/c', 'rmdir', path.replace(/\//g, '\\')]
+        : ['rmdir', path],
+    )
+  }
+
+  return names.length
 }
 
 // Folds a closed item's records into one file and removes the rest: a few
@@ -1248,7 +1317,7 @@ const compact = async ($: EngineInterface): Promise<void> => {
     }
 
     const name = `${item.id}.${item.updatedAt.toString(36)}.${token(8)}.json`
-    const change: BacklogChange = {
+    const change: WipChange = {
       id: item.id,
       at: item.updatedAt,
       sessionId: item.sessionId,
@@ -1266,7 +1335,7 @@ const compact = async ($: EngineInterface): Promise<void> => {
       )
     } catch (error) {
       // The folder is not taking writes: nothing more this poll.
-      $.ui.log(`backlog: could not compact ${item.id}: ${reason(error)}`, {
+      $.ui.log(`wip: could not compact ${item.id}: ${reason(error)}`, {
         to: 'debug',
       })
       break
@@ -1287,20 +1356,20 @@ const compact = async ($: EngineInterface): Promise<void> => {
   } catch (error) {
     compactAfter = now + COMPACT_RETRY_MS
     $.ui.log(
-      `backlog: could not remove the records a compaction replaced: ${reason(error)}`,
+      `wip: could not remove the records a compaction replaced: ${reason(error)}`,
       { to: 'debug' },
     )
   }
 }
 
 // One change asked of an item: the fields to set and a note to append.
-type Edit = { id: string; set: Partial<BacklogFields>; note: string }
+type Edit = { id: string; set: Partial<WipFields>; note: string }
 
 // What one change came to: written, and the item as it then stands; or not,
 // as no item has the id, or as its write failed or one before it did.
 type Edited = {
   id: string
-  item?: BacklogItem
+  item?: WipItem
   isWritten: boolean
   isMissing: boolean
 }
@@ -1378,10 +1447,10 @@ const editMany = (
 const edit = async (
   $: EngineInterface,
   id: string,
-  set: Partial<BacklogFields>,
+  set: Partial<WipFields>,
   note = '',
   signal?: AbortSignal,
-): Promise<BacklogItem | undefined> => {
+): Promise<WipItem | undefined> => {
   const { outcomes } = await editMany($, [{ id, set, note }], signal)
 
   return outcomes[0]?.item
@@ -1414,7 +1483,7 @@ const add = (
       index: number,
       title: string,
       id: string,
-      set: Partial<BacklogFields>,
+      set: Partial<WipFields>,
       line: string,
     ): Promise<boolean> => {
       try {
@@ -1425,7 +1494,7 @@ const add = (
         }
 
         const after = drafts.length - index - 1
-        failure = `The backlog could not be written: ${reason(error)}. Not recorded: "${fit(title, 60)}"${after === 0 ? '' : ` and the ${after === 1 ? 'item' : `${after} items`} after it`}. Send ${after === 0 ? 'it' : 'those'} again; what is listed here needs no resending.`
+        failure = `The WIP list could not be written: ${reason(error)}. Not recorded: "${fit(title, 60)}"${after === 0 ? '' : ` and the ${after === 1 ? 'item' : `${after} items`} after it`}. Send ${after === 0 ? 'it' : 'those'} again; what is listed here needs no resending.`
 
         return false
       }
@@ -1491,7 +1560,7 @@ const add = (
       if (twin !== undefined) {
         // Only what the draft gives: the twin's status, resolution and notes
         // are not this call's to set.
-        const refreshed: Partial<BacklogFields> = {}
+        const refreshed: Partial<WipFields> = {}
         // The draft is Claude's reading of the item now, and its options
         // belong to that reading: a defect given options is a decision.
         const isMoved =
@@ -1523,8 +1592,8 @@ const add = (
           twin.id,
           refreshed,
           isMoved
-            ? `already on the backlog, refreshed, and moved from ${twin.category} to ${given.category}`
-            : 'already on the backlog, refreshed',
+            ? `already on the WIP list, refreshed, and moved from ${twin.category} to ${given.category}`
+            : 'already on the WIP list, refreshed',
         )
 
         if (!isRefreshed) {
@@ -1578,15 +1647,15 @@ const add = (
       text:
         lines.length === 0
           ? 'Nothing recorded: `items` was empty.'
-          : `Recorded on the backlog:\n${lines.join('\n')}`,
+          : `Recorded on the WIP list:\n${lines.join('\n')}`,
       recorded,
       hasFailed: false,
     }
   }, signal)
 
-const describe = (item: BacklogItem): string =>
+const describe = (item: WipItem): string =>
   [
-    `Backlog item ${item.id} (${item.category}, ${item.priority} priority, ${STATUS[item.status]}): ${item.title}`,
+    `WIP item ${item.id} (${item.category}, ${item.priority} priority, ${STATUS[item.status]}): ${item.title}`,
     `Recorded in ${item.project}.`,
     item.detail,
     item.options.length > 0
@@ -1605,15 +1674,15 @@ const describe = (item: BacklogItem): string =>
     .filter(part => part !== '')
     .join('\n\n')
 
-const closing = (item: BacklogItem): string =>
-  `When this is finished, call mcp__backlog__update for ${item.id} with status "done" and a one-line resolution. If it cannot be finished, set its status back to "open" with a note saying what is in the way.`
+const closing = (item: WipItem): string =>
+  `When this is finished, call mcp__wip__update for ${item.id} with status "done" and a one-line resolution. If it cannot be finished, set its status back to "open" with a note saying what is in the way.`
 
 // Changes an item for a press in the pane, and resolves why the folder did
 // not take the change, '' when it did. A press has no caller to refuse.
 const attempt = (
   $: EngineInterface,
   id: string,
-  set: Partial<BacklogFields>,
+  set: Partial<WipFields>,
 ): Promise<string> =>
   edit($, id, set).then(
     () => '',
@@ -1625,13 +1694,13 @@ const attempt = (
 const change = async (
   $: EngineInterface,
   id: string,
-  set: Partial<BacklogFields>,
+  set: Partial<WipFields>,
 ): Promise<boolean> => {
   const failure = await attempt($, id, set)
 
   if (failure !== '') {
     $.ui.toast(
-      `Backlog: ${id} was not changed (${failure}). Press the action again.`,
+      `WIP: ${id} was not changed (${failure}). Press the action again.`,
       { timeoutMs: 10000 },
     )
   }
@@ -1644,7 +1713,7 @@ const change = async (
 // and the item is left as it was, its actions still there to press again.
 const send = async (
   $: EngineInterface,
-  item: BacklogItem,
+  item: WipItem,
   lead: string,
   resolution?: string,
 ): Promise<void> => {
@@ -1662,7 +1731,7 @@ const send = async (
 
   if (refusal !== '') {
     $.ui.toast(
-      `Backlog: ${item.id} was not sent to Claude (${fit(refusal, 80)}). It is unchanged: open it and press the action again.`,
+      `WIP: ${item.id} was not sent to Claude (${fit(refusal, 80)}). It is unchanged: open it and press the action again.`,
       { timeoutMs: 10000 },
     )
 
@@ -1679,7 +1748,7 @@ const send = async (
 
   if (failure !== '') {
     $.ui.toast(
-      `Backlog: ${item.id} was sent to Claude, but is not marked in progress (${failure}).`,
+      `WIP: ${item.id} was sent to Claude, but is not marked in progress (${failure}).`,
       { timeoutMs: 10000 },
     )
 
@@ -1692,8 +1761,58 @@ const send = async (
 const show = ($: EngineInterface, id: string | null) =>
   update($, view, held => ({ ...held, selected: id }))
 
+// The items the list shows under `held`, grouped by category, each group most
+// urgent first; a category with none shown is left out.
+const groupsOf = (
+  all: WipItem[],
+  held: WipView,
+  here: string,
+): { shown: WipItem[]; groups: { category: WipCategory; members: WipItem[] }[] } => {
+  const shown = all.filter(
+    one =>
+      (held.scope === 'all' || one.project === here) &&
+      (held.showClosed || isOpen(one)),
+  )
+  const groups = CATEGORIES.map(category => ({
+    category,
+    members: shown.filter(one => one.category === category).sort(byUrgency),
+  })).filter(group => group.members.length > 0)
+
+  return { shown, groups }
+}
+
+// The body rows the pane asks for when it opens: seated inline above the
+// prompt, it then shows the list whole, up to what the layout spares, rather
+// than a third of the screen. The list's three rows of header, then for each
+// group a blank row, its heading and, unfolded, a row an item; with no group,
+// the two rows that say so. The dock ignores the ask.
+const rowsFor = async ($: EngineInterface): Promise<number> => {
+  const held = await read($, view)
+
+  if (held.selected !== null) {
+    return DETAIL_ROWS
+  }
+
+  const collapsed = toCategories(held.collapsed)
+  const { groups } = groupsOf(
+    await read($, items),
+    held,
+    await read($, project),
+  )
+
+  return groups.length === 0
+    ? 3 + 3
+    : groups.reduce(
+        (sum, group) =>
+          sum +
+          2 +
+          (collapsed.includes(group.category) ? 0 : group.members.length),
+        3,
+      )
+}
+
 const tone = (
-  priority: BacklogPriority,
+  priority: WipPriority,
 ): { color?: string; bold?: boolean; dimColor?: boolean } => {
   if (priority === 'critical') {
     return { color: 'error', bold: true }
@@ -1782,7 +1901,7 @@ const toggle = async ($: EngineInterface): Promise<void> => {
     try {
       await $.ui.close({ id: PANE })
     } catch (error) {
-      $.ui.toast(`Backlog: the pane stays open: ${why(error, 'ui.close')}`)
+      $.ui.toast(`WIP: the pane stays open: ${why(error, 'ui.close')}`)
     }
 
     return
@@ -1790,10 +1909,15 @@ const toggle = async ($: EngineInterface): Promise<void> => {
 
   // The pane opens even when the folder cannot be read; the poll catches up.
   await sync($).catch(() => undefined)
-  const opened = await $.ui.open({ id: PANE, title: 'Backlog', focus: true })
+  const opened = await $.ui.open({
+    id: PANE,
+    title: 'WIP',
+    focus: true,
+    rows: await rowsFor($),
+  })
 
   if (!opened.isPlaced) {
-    $.ui.toast(`Backlog: the pane is not shown: ${opened.reason}`)
+    $.ui.toast(`WIP: the pane is not shown: ${opened.reason}`)
   }
 }
 
@@ -1808,20 +1932,25 @@ const reveal = async ($: EngineInterface, href: string): Promise<void> => {
     await sync($).catch(() => undefined)
 
     if (!(await read($, items)).some(one => one.id === id)) {
-      $.ui.toast(`Backlog: ${id} is no longer on the backlog`)
+      $.ui.toast(`WIP: ${id} is no longer on the WIP list`)
 
       return
     }
 
     await show($, id)
-    const opened = await $.ui.open({ id: PANE, title: 'Backlog', focus: true })
+    const opened = await $.ui.open({
+      id: PANE,
+      title: 'WIP',
+      focus: true,
+      rows: await rowsFor($),
+    })
 
     if (!opened.isPlaced) {
-      $.ui.toast(`Backlog: the pane is not shown: ${opened.reason}`)
+      $.ui.toast(`WIP: the pane is not shown: ${opened.reason}`)
     }
   } catch (error) {
     $.ui.toast(
-      `Backlog: ${id} could not be opened: ${fit(why(error, 'ui.open'), 80)}`,
+      `WIP: ${id} could not be opened: ${fit(why(error, 'ui.open'), 80)}`,
     )
   }
 }
@@ -1838,19 +1967,19 @@ export const register: Register = on => {
         await update($, view, one => ({ ...one, collapsed }))
       }
     } catch (error) {
-      $.ui.log(`backlog: could not read the folded sections: ${reason(error)}`, {
+      $.ui.log(`wip: could not read the folded sections: ${reason(error)}`, {
         to: 'debug',
       })
     }
 
     await $.command.register({
-      name: 'backlog',
+      name: 'wip',
       description:
-        'Open the backlog pane: defects, issues, tasks and decisions from your sessions',
+        'Open the WIP pane: defects, issues, tasks and decisions from your sessions',
     })
     await $.tool.register({
       name: 'add',
-      description: `Records items on the person's backlog pane: defects found, issues noticed, follow-up tasks, and decisions that need the person. Call it when a piece of work ends and leaves any of these, as well as mentioning them in the reply, and when you reach a choice that is the person's to make. One call takes up to ${BATCH_MAX} items. An open item with the same title in this project is refreshed, not duplicated: it takes the category, priority, detail, options and recommendation given.`,
+      description: `Records items on the person's WIP pane: defects found, issues noticed, follow-up tasks, and decisions that need the person. Call it when a piece of work ends and leaves any of these, as well as mentioning them in the reply, and when you reach a choice that is the person's to make. One call takes up to ${BATCH_MAX} items. An open item with the same title in this project is refreshed, not duplicated: it takes the category, priority, detail, options and recommendation given.`,
       inputSchema: {
         type: 'object',
         properties: {
@@ -1866,7 +1995,7 @@ export const register: Register = on => {
     })
     await $.tool.register({
       name: 'update',
-      description: `Updates backlog items by id: mark one in_progress when you start work on it, done with a resolution once fixed or settled, open again when you stop work on it unfinished, change its priority or category, or append a note with what you learned. Give \`id\` and the fields to change for one item, or \`items\` for several: one call for all of them, up to ${BATCH_MAX}, not one call per item. Ids come from mcp__backlog__add and mcp__backlog__list.`,
+      description: `Updates WIP items by id: mark one in_progress when you start work on it, done with a resolution once fixed or settled, open again when you stop work on it unfinished, change its priority or category, or append a note with what you learned. Give \`id\` and the fields to change for one item, or \`items\` for several: one call for all of them, up to ${BATCH_MAX}, not one call per item. Ids come from mcp__wip__add and mcp__wip__list.`,
       inputSchema: {
         type: 'object',
         properties: {
@@ -1889,7 +2018,7 @@ export const register: Register = on => {
     await $.tool.register({
       name: 'list',
       description:
-        "Lists the backlog: each item's id, category, priority, status and title; with `id`, that one item in full. Open items of this project unless asked otherwise.",
+        "Lists the WIP items: each one's id, category, priority, status and title; with `id`, that one item in full. Open items of this project unless asked otherwise.",
       inputSchema: {
         type: 'object',
         properties: {
@@ -1908,9 +2037,23 @@ export const register: Register = on => {
     })
 
     try {
+      const moved = await inTurn(() => migrate($))
+
+      if (moved > 0) {
+        $.ui.toast(
+          `WIP: moved ${moved} ${moved === 1 ? 'record' : 'records'} from the backlog folder`,
+        )
+      }
+    } catch (error) {
+      $.ui.log(
+        `wip: could not move the records from the backlog folder: ${reason(error)}`,
+      )
+    }
+
+    try {
       await sync($)
     } catch (error) {
-      $.ui.log(`backlog: could not read the backlog folder: ${reason(error)}`)
+      $.ui.log(`wip: could not read the WIP folder: ${reason(error)}`)
     }
 
     // One poll at a time: a session that starts again with the module still
@@ -1919,7 +2062,9 @@ export const register: Register = on => {
     polling = $.clock.every(POLL_MS, () => {
       void inTurn(() => poll($)).catch(() => undefined)
     })
-    void $.ui.open({ id: PANE, title: 'Backlog' })
+    // Opened by the first band drawing that says whether its surface docks a
+    // pane: `session.start` does not say.
+    isOpening = true
 
     return next(e)
   })
@@ -1981,26 +2126,31 @@ export const register: Register = on => {
   on('prompt.compose', async ($, e, next) => {
     const composed = await next(e)
 
-    if (!e.tools.includes('mcp__backlog__add')) {
+    if (!e.tools.includes('mcp__wip__add')) {
       return composed
     }
 
     return {
       sections: [
         ...composed.sections,
-        { id: 'backlog:tracking', text: GUIDANCE, scope: 'session' },
+        { id: 'wip:tracking', text: GUIDANCE, scope: 'session' },
       ],
     }
   })
 
-  on('command.run', { command: 'backlog' }, async $ => {
+  on('command.run', { command: 'wip' }, async $ => {
     // The pane opens even when the folder cannot be read, and says why it is
     // empty in place of the count.
     const failure = await sync($).then(
       () => '',
       (error: unknown) => reason(error),
     )
-    const opened = await $.ui.open({ id: PANE, title: 'Backlog', focus: true })
+    const opened = await $.ui.open({
+      id: PANE,
+      title: 'WIP',
+      focus: true,
+      rows: await rowsFor($),
+    })
     const here = await read($, project)
     const open = (await read($, items)).filter(
       one => isOpen(one) && one.project === here,
@@ -2008,18 +2158,31 @@ export const register: Register = on => {
     const count =
       failure === ''
         ? `${open.length} open in ${nameOf(here)}`
-        : `could not read the backlog folder: ${failure}`
+        : `could not read the WIP folder: ${failure}`
 
     return {
       text: opened.isPlaced
-        ? `Backlog pane opened: ${count}.`
-        : `Backlog: ${count}. The pane is not shown: ${opened.reason}.`,
+        ? `WIP pane opened: ${count}.`
+        : `WIP: ${count}. The pane is not shown: ${opened.reason}.`,
     }
   })
 
-  // One row above the prompt where the surface raises the band: `backlog:`,
+  // One row above the prompt where the surface raises the band: `wip:`,
   // which opens and closes the pane, and this project's counts.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    // The pane opens unasked only where it would sit beside the transcript: a
+    // main screen would seat it above the prompt, a third of the screen tall,
+    // at every start. Unknown, the next drawing is asked again.
+    const isFullscreen = e.viewport?.isFullscreen
+
+    if (isOpening && isFullscreen !== undefined) {
+      isOpening = false
+
+      if (isFullscreen) {
+        void $.ui.open({ id: PANE, title: 'WIP' })
+      }
+    }
+
     const counts = await countsHere($)
 
     // The band is shared with the engine's surveys and other plugins.
@@ -2028,7 +2191,7 @@ export const register: Register = on => {
     }
 
     const { Box, Button, Text } = $.ui.resolve(e)
-    const label = 'backlog:'
+    const label = 'wip:'
     // One row, never wrapped: counts too wide for what the label leaves are
     // cut, their marks then plain.
     const room = Math.max(1, e.props.bodyColumns - label.length - 1)
@@ -2126,7 +2289,7 @@ export const register: Register = on => {
     return tree ?? next(e)
   })
 
-  on('tool.call', { tool: 'mcp__backlog__add' }, async ($, e, next) => {
+  on('tool.call', { tool: 'mcp__wip__add' }, async ($, e, next) => {
     if (!Array.isArray(e.items)) {
       return { result: 'Nothing recorded: `items` must be a list of items.' }
     }
@@ -2135,7 +2298,7 @@ export const register: Register = on => {
 
     if (drafts.length > BATCH_MAX) {
       return {
-        deny: `mcp__backlog__add takes at most ${BATCH_MAX} items in one call and got ${drafts.length}. Nothing was recorded: send them in batches.`,
+        deny: `mcp__wip__add takes at most ${BATCH_MAX} items in one call and got ${drafts.length}. Nothing was recorded: send them in batches.`,
       }
     }
 
@@ -2143,20 +2306,20 @@ export const register: Register = on => {
 
     if (recorded > 0) {
       $.ui.toast(
-        `Backlog: ${recorded} ${recorded === 1 ? 'item' : 'items'} recorded`,
+        `WIP: ${recorded} ${recorded === 1 ? 'item' : 'items'} recorded`,
       )
     }
 
     return hasFailed ? { deny: text } : { result: text }
   }).catch(refuse)
 
-  on('tool.call', { tool: 'mcp__backlog__update' }, async ($, e, next) => {
+  on('tool.call', { tool: 'mcp__wip__update' }, async ($, e, next) => {
     if (Array.isArray(e.items)) {
       const drafts = e.items
 
       if (drafts.length > BATCH_MAX) {
         return {
-          deny: `mcp__backlog__update takes at most ${BATCH_MAX} items in one call and got ${drafts.length}. Nothing was changed: send them in batches.`,
+          deny: `mcp__wip__update takes at most ${BATCH_MAX} items in one call and got ${drafts.length}. Nothing was changed: send them in batches.`,
         }
       }
 
@@ -2200,20 +2363,20 @@ export const register: Register = on => {
             `- ${outcome.id}: ${STATUS[outcome.item.status]}, ${outcome.item.priority} priority`,
           )
         } else if (outcome?.isMissing === true) {
-          lines.push(`- skipped ${outcome.id}: no backlog item has that id`)
+          lines.push(`- skipped ${outcome.id}: no WIP item has that id`)
         }
       }
 
       if (failure !== '') {
         return {
-          deny: `The backlog could not be written: ${failure}. Not changed: ${untried.map(one => one.id).join(', ')}. Send ${untried.length === 1 ? 'it' : 'those'} again; what is listed here needs no resending.\nChanged before the failure:\n${lines.join('\n')}`,
+          deny: `The WIP list could not be written: ${failure}. Not changed: ${untried.map(one => one.id).join(', ')}. Send ${untried.length === 1 ? 'it' : 'those'} again; what is listed here needs no resending.\nChanged before the failure:\n${lines.join('\n')}`,
         }
       }
 
       return {
         result:
           changed.length === 0
-            ? `Nothing was changed. mcp__backlog__list gives the ids.\n${lines.join('\n')}`
+            ? `Nothing was changed. mcp__wip__list gives the ids.\n${lines.join('\n')}`
             : `Updated ${changed.length} ${changed.length === 1 ? 'item' : 'items'}:\n${lines.join('\n')}`,
       }
     }
@@ -2260,12 +2423,12 @@ export const register: Register = on => {
     return {
       result:
         edited === undefined
-          ? `No backlog item has the id "${id}". mcp__backlog__list gives the ids.`
+          ? `No WIP item has the id "${id}". mcp__wip__list gives the ids.`
           : `Updated ${edited.id}: ${STATUS[edited.status]}, ${edited.priority} priority.`,
     }
   }).catch(refuse)
 
-  on('tool.call', { tool: 'mcp__backlog__list' }, async ($, e, next) => {
+  on('tool.call', { tool: 'mcp__wip__list' }, async ($, e, next) => {
     await sync($, next.signal)
     const all = await read($, items)
     const here = await read($, project)
@@ -2278,7 +2441,7 @@ export const register: Register = on => {
 
       return {
         result:
-          one === undefined ? `No backlog item has the id "${id}".` : describe(one),
+          one === undefined ? `No WIP item has the id "${id}".` : describe(one),
       }
     }
 
@@ -2293,7 +2456,7 @@ export const register: Register = on => {
     return {
       result:
         listed.length === 0
-          ? 'The backlog has no matching items.'
+          ? 'The WIP list has no matching items.'
           : listed
               .map(one => {
                 const claimed = ages[one.id] ?? 0
@@ -2342,7 +2505,7 @@ export const register: Register = on => {
       const isHere =
         isWorking && selected.workingIn === (await $.session.id())
       const claimed = ages[selected.id] ?? 0
-      const close = async (status: BacklogStatus) => {
+      const close = async (status: WipStatus) => {
         if (await change($, selected.id, { status })) {
           await show($, null)
         }
@@ -2421,7 +2584,7 @@ export const register: Register = on => {
                         send(
                           $,
                           selected,
-                          `I have decided this backlog item: "${option.label}". Carry the decision out.`,
+                          `I have decided this WIP item: "${option.label}". Carry the decision out.`,
                           `Decided: ${option.label}`,
                         )
                       }
@@ -2453,7 +2616,7 @@ export const register: Register = on => {
                     void send(
                       $,
                       selected,
-                      `My direction for this backlog item: ${direction}`,
+                      `My direction for this WIP item: ${direction}`,
                       isDecision
                         ? fit(`Directed: ${direction}`, RESOLUTION_MAX)
                         : undefined,
@@ -2470,7 +2633,7 @@ export const register: Register = on => {
                 variant="primary"
                 label="Fix now"
                 onPress={() =>
-                  send($, selected, 'Please work on this backlog item now.')
+                  send($, selected, 'Please work on this WIP item now.')
                 }
               />
             )}
@@ -2483,7 +2646,7 @@ export const register: Register = on => {
                   send(
                     $,
                     selected,
-                    'I accept your recommendation for this backlog item. Carry it out.',
+                    'I accept your recommendation for this WIP item. Carry it out.',
                     fit(
                       `Accepted the recommendation: ${selected.recommendation}`,
                       RESOLUTION_MAX,
@@ -2536,15 +2699,8 @@ export const register: Register = on => {
     }
 
     const isAll = held.scope === 'all'
-    const shown = all.filter(
-      one =>
-        (isAll || one.project === here) && (held.showClosed || isOpen(one)),
-    )
+    const { shown, groups } = groupsOf(all, held, here)
     const counts = tally(shown.filter(isOpen), [...freshIds])
-    const groups = CATEGORIES.map(category => ({
-      category,
-      members: shown.filter(one => one.category === category).sort(byUrgency),
-    })).filter(group => group.members.length > 0)
 
     return (
       <Box flexDirection="column">
@@ -2559,7 +2715,7 @@ export const register: Register = on => {
             key="scope"
             label={isAll ? 'This project' : 'All projects'}
             onPress={() =>
-              update($, view, (one): BacklogView => ({
+              update($, view, (one): WipView => ({
                 ...one,
                 scope: one.scope === 'all' ? 'project' : 'all',
               }))

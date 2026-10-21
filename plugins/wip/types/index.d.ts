@@ -1,30 +1,30 @@
-export type BacklogCategory = 'decision' | 'defect' | 'issue' | 'task'
+export type WipCategory = 'decision' | 'defect' | 'issue' | 'task'
 
-export type BacklogPriority = 'critical' | 'high' | 'medium' | 'low'
+export type WipPriority = 'critical' | 'high' | 'medium' | 'low'
 
-export type BacklogStatus = 'open' | 'in_progress' | 'done' | 'dismissed'
+export type WipStatus = 'open' | 'in_progress' | 'done' | 'dismissed'
 
 /** One choice of a decision item; `detail` is '' when the label says it all. */
-export type BacklogOption = { label: string; detail: string }
+export type WipOption = { label: string; detail: string }
 
 /** Markdown appended to an item after it was recorded, and when. */
-export type BacklogNote = { at: number; text: string }
+export type WipNote = { at: number; text: string }
 
-/** One item, as its change records under `<config>/backlog/items/` fold. */
-export type BacklogItem = {
+/** One item, as its change records under `<config>/wip/items/` fold. */
+export type WipItem = {
   id: string
   title: string
-  category: BacklogCategory
-  priority: BacklogPriority
-  status: BacklogStatus
+  category: WipCategory
+  priority: WipPriority
+  status: WipStatus
   /** Markdown, written to stand alone: what, where, why it matters. */
   detail: string
-  options: BacklogOption[]
+  options: WipOption[]
   /** What Claude would do; '' when it recorded none. */
   recommendation: string
   /** What was decided or how it ended; '' until then. */
   resolution: string
-  notes: BacklogNote[]
+  notes: WipNote[]
   /** The project root of the session that recorded it, forward slashes. */
   project: string
   /** The session that recorded it. */
@@ -41,8 +41,8 @@ export type BacklogItem = {
 }
 
 /** The fields of an item a change record may set. */
-export type BacklogFields = Pick<
-  BacklogItem,
+export type WipFields = Pick<
+  WipItem,
   | 'title'
   | 'category'
   | 'priority'
@@ -59,11 +59,11 @@ export type BacklogFields = Pick<
  * never rewritten, so two sessions changing an item never overwrite each other.
  * An item is its records in `at` order, each setting the fields it names.
  */
-export type BacklogChange = {
+export type WipChange = {
   id: string
   at: number
   sessionId: string
-  set: Partial<BacklogFields>
+  set: Partial<WipFields>
   /** Appended to the item's notes; '' for none. */
   note: string
   /**
@@ -74,24 +74,24 @@ export type BacklogChange = {
    * it. Absent on a plain change.
    */
   folds?: string[]
-  notes?: BacklogNote[]
+  notes?: WipNote[]
   createdAt?: number
 }
 
-export type BacklogView = {
+export type WipView = {
   /** The item open in the detail view, or null for the list. */
   selected: string | null
   scope: 'project' | 'all'
   showClosed: boolean
   /** The categories whose section the list shows folded to its heading. */
-  collapsed: BacklogCategory[]
+  collapsed: WipCategory[]
 }
 
 declare module 'claude-code' {
   interface PluginState {
-    backlog: {
-      items: BacklogItem[]
-      view: BacklogView
+    wip: {
+      items: WipItem[]
+      view: WipView
       project: string
       /**
        * The ids of the items marked new: open, and recorded in the last ten

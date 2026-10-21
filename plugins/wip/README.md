@@ -1,4 +1,4 @@
-# backlog
+# wip
 
 A Claude Code mod: a side pane that tracks the defects, issues, follow-up tasks and decisions
 your sessions turn up, so they stop scrolling away in the transcript.
@@ -7,18 +7,30 @@ Long-running sessions end every iteration with a list of things left over. This 
 Claude a place to record them and gives you a pane to triage them: grouped by category, sorted
 by priority, with a detail view where you decide, direct or dismiss each one.
 
+WIP stands for work in progress. The list holds what your own sessions leave behind; it does not
+replace a team backlog in GitHub or Azure DevOps.
+
+## Install
+
+```shell
+/plugin install wip --marketplace endjin/endjin-marketplace
+```
+
+This needs Claude Code 2.1.275 or later. On an earlier version, add the marketplace with
+`/plugin marketplace add endjin/endjin-marketplace`, then run `/plugin install wip@endjin`.
+
 ## What you get
 
 | Piece | What it does |
 | --- | --- |
-| `/backlog` | Opens and focuses the pane |
-| Backlog pane | Open items grouped as Decisions, Defects, Issues and Tasks, each sorted critical to low; press a heading to fold its section to the heading and its count, or to unfold it, and the choice is kept across sessions |
+| `/wip` | Opens and focuses the pane |
+| WIP pane | Open items grouped as Decisions, Defects, Issues and Tasks, each sorted critical to low; press a heading to fold its section to the heading and its count, or to unfold it, and the choice is kept across sessions |
 | Detail view | The item's full context, Claude's recommendation, its options, and the actions below |
-| Row above the prompt | `backlog: 4 open, » 1 in progress, ● 2 new, 1 to decide` for the current project, on the terminal and desktop, while it has open items; press `backlog:` to open or close the pane. VS Code and mobile show the counts on a plain status line instead, also when they attach to a terminal session |
+| Row above the prompt | `wip: 4 open, » 1 in progress, ● 2 new, 1 to decide` for the current project, on the terminal and desktop, while it has open items; press `wip:` to open or close the pane. VS Code and mobile show the counts on a plain status line instead, also when they attach to a terminal session |
 | Ids in Claude's replies | On the desktop and in the fullscreen terminal, an item's id is a link that opens the pane on that item |
-| `mcp__backlog__add` | Claude records one or more items; an open item with the same title is refreshed, not duplicated: it takes the category, priority, detail, options and recommendation given, so a defect recorded again as a decision becomes one, and the reply says it moved |
-| `mcp__backlog__update` | Claude marks an item in progress or done, re-prioritises it, or appends a note; several items change in one call, as `items`, with one record written per item and the pane redrawn once |
-| `mcp__backlog__list` | Claude lists the backlog, or reads one item in full; new items are flagged `new`, and an item in progress for a day or more says for how long |
+| `mcp__wip__add` | Claude records one or more items; an open item with the same title is refreshed, not duplicated: it takes the category, priority, detail, options and recommendation given, so a defect recorded again as a decision becomes one, and the reply says it moved |
+| `mcp__wip__update` | Claude marks an item in progress or done, re-prioritises it, or appends a note; several items change in one call, as `items`, with one record written per item and the pane redrawn once |
+| `mcp__wip__list` | Claude lists the WIP items, or reads one item in full; new items are flagged `new`, and an item in progress for a day or more says for how long |
 
 A short system-prompt section tells Claude to record what a piece of work leaves behind, to
 write each item so it stands alone, to mark an item in progress when it starts work on it, and
@@ -64,7 +76,7 @@ An item in progress goes back to open in three ways, so a `»` does not outlive 
 - **You release it.** A session that crashes writes nothing, so its items stay in progress. An
   item in progress for a day or more says so: `3d` before its title in the list,
   `In progress since 2026-10-03 (3 days)` in its detail view, and `in progress for 3 days` when
-  Claude lists the backlog. **Release** in the detail view sets it back to open. The age moves on
+  Claude lists the WIP items. **Release** in the detail view sets it back to open. The age moves on
   the first five-second poll past each whole day.
 
 ## Acting on an item
@@ -82,26 +94,26 @@ button in, as a prompt that runs once that session is idle. The item is marked i
 Claude is asked to mark it done with a one-line resolution when it finishes, or to set it back to
 open with a note when it cannot.
 
-An action the backlog folder does not take, because it cannot be read or written, changes
+An action the WIP folder does not take, because it cannot be read or written, changes
 nothing and says why in a toast; press it again once the folder is back. When an item was sent to
 Claude but could not be marked in progress, the toast says that instead.
 
 ## Ids in the transcript
 
 Claude's replies name items by id, such as `iqzyou3r`. On the desktop and in the fullscreen
-terminal, the id of every item on the backlog, in any project and open or closed, is a link:
+terminal, the id of every item on the WIP list, in any project and open or closed, is a link:
 click it to open the pane on that item. On the terminal's main screen, and in VS Code and on
 mobile, ids stay plain text: a click there would open a browser, not the pane. An id inside
 a code block or a code span, or inside a link Claude already wrote, is left as it is. An item that
-has left the backlog since the reply was drawn says so in a toast.
+has left the WIP list since the reply was drawn says so in a toast.
 
 A reply that names no item is left as the engine draws it, at no cost beyond a scan of its words,
 and is not drawn again when an item is recorded: an id is named once its item exists. A reply
 that names one is drawn again when the ids change, so a link to an item that has left loses it.
 
-## One backlog across sessions
+## One WIP list across sessions
 
-The backlog is a folder of change records, `~/.claude/backlog/items/` (under `CLAUDE_CONFIG_DIR`
+The WIP list is a folder of change records, `~/.claude/wip/items/` (under `CLAUDE_CONFIG_DIR`
 when that is set). Every session with the plugin enabled reads and writes that folder, re-reads
 it every five seconds, and shows a toast when another session adds an item. After a minute of
 polls that find nothing new, the folder is re-read every thirty seconds instead, until a re-read
@@ -131,7 +143,13 @@ The pane lists the current project's items; **All projects** shows the rest. An 
 another project says so in its detail view, because acting on it runs in the session you are in,
 not the one that recorded it.
 
-Items are never deleted, only marked done or dismissed. To clear the backlog, delete the files.
+Items are never deleted, only marked done or dismissed. To clear the WIP list, delete the files.
+
+The plugin was called `backlog` before, and kept its records in `~/.claude/backlog/items/`. Each
+session start moves any records it finds there into the WIP folder. A record the WIP folder
+already has is not written again. The old files are removed once every copy is written, and then
+the old folders are removed if they are empty. A toast says how many records moved. A removal
+the host refuses is logged and left for the next session start, which moves the records again.
 
 Most limits are enforced when Claude writes, by refusing with the reason, so Claude can shorten
 or split what it sent:
@@ -157,24 +175,31 @@ Claude whole.
   early access and may change between releases.
 - Claude Code only. The plugin is a hooks module (`hooks/register.tsx`), which other agents that
   read this marketplace do not run.
-- The pane opens by itself at session start only in a terminal at least 144 columns wide.
-  Below that, run `/backlog`.
+- Where the pane sits depends on the terminal's layout:
+  - **Fullscreen layout** (the default): the pane is docked beside the transcript from 110
+    columns. It opens by itself at session start in a terminal at least 144 columns wide. Below
+    that, run `/wip`.
+  - **Main screen** (under tmux by default, or with `CLAUDE_CODE_NO_FLICKER=0`): the pane is a
+    box above the prompt, never beside the transcript. It does not open by itself there, so it
+    does not take over the screen at every start. Run `/wip` or press `wip:` to open it. It
+    opens tall enough to show the whole list, up to what the screen can spare; when the list is
+    longer, focus the pane and scroll with the arrow keys.
 - The detail view has no keyboard shortcuts: use Tab, Enter and the mouse.
 
 ## Developing
 
 ```bash
-claude plugin validate ./plugins/backlog    # manifest, hooks and state contract
-claude plugin test ./plugins/backlog        # tests/backlog.test.ts, against the engine
-claude --plugin-dir ./plugins/backlog       # load it from disk, hot-reloading on save
+claude plugin validate ./plugins/wip    # manifest, hooks and state contract
+claude plugin test ./plugins/wip        # tests/wip.test.ts, against the engine
+claude --plugin-dir ./plugins/wip       # load it from disk, hot-reloading on save
 ```
 
 Loading it with `--plugin-dir` makes the engine write its type declarations into
 `.claude-plugin/types/` (ignored by git), which `tsconfig.json` extends, so an editor and
-`tsc -p plugins/backlog` type-check the module.
+`tsc -p plugins/wip` type-check the module.
 
 | Path | Holds |
 | --- | --- |
 | `hooks/register.tsx` | The hooks module: tools, command, system-prompt section, storage, the pane and the links to items in replies |
 | `types/index.d.ts` | The item and change-record shapes, and the `$.state` contract |
-| `tests/backlog.test.ts` | Behaviour tests over an in-memory folder, on the terminal, desktop, VS Code and mobile surfaces |
+| `tests/wip.test.ts` | Behaviour tests over an in-memory folder, on the terminal, desktop, VS Code and mobile surfaces |
