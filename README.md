@@ -15,6 +15,12 @@ endjin-marketplace/
     │   └── skills/
     │       └── explain-diff-html/
     │           └── SKILL.md      # One directory per skill
+    ├── devops-tools/
+    │   ├── .claude-plugin/
+    │   │   └── plugin.json
+    │   └── skills/
+    │       └── register-deployment-identity/
+    │           └── SKILL.md
     ├── writing-tools/
     │   ├── .claude-plugin/
     │   │   └── plugin.json
@@ -40,6 +46,7 @@ Each plugin entry in `marketplace.json` references its directory with an explici
 | Plugin | Kind | What it gives you |
 | --- | --- | --- |
 | [`code-review-tools`](#code-review-tools) | Skill | `explain-diff-html`: a rich, self-contained HTML explanation of a code change, branch, or PR |
+| [`devops-tools`](#devops-tools) | Skill | `register-deployment-identity`: requests Azure deployment identities for a repo's GitHub Actions workflows in endjin-identity-ops |
 | [`writing-tools`](#writing-tools) | Skill | `clear-technical-writing`: writes and rewrites technical text so it is plain, consistent, and inclusive |
 | [`wip`](#wip) | Mod (Claude Code only) | A side pane that tracks the defects, issues, tasks and decisions your sessions turn up |
 
@@ -64,6 +71,27 @@ To use it, name the change you want explained:
 You can also ask in your own words, for example "give me a rich explanation of this diff", and the agent picks the skill up from its description.
 
 The page is saved as `.explanations/YYYY-MM-DD-explanation-<slug>.html` at the repository root, and `.explanations/` is added to `.gitignore`. Open the file in VS Code's Simple Browser or in your own browser.
+
+### devops-tools
+
+`register-deployment-identity` requests the Azure identities that a repo's GitHub Actions workflows use to deploy, one for each environment. endjin creates these identities through a GitOps process in the private [endjin/endjin-identity-ops](https://github.com/endjin/endjin-identity-ops) repo, so the skill is useful only to people with access to that repo.
+
+The skill:
+
+1. Reads the consuming repo's deployment code to find its environments, subscriptions, resource groups, and the roles and groups the deployment needs. For example, Owner when the templates create role assignments, or the ACR publishers group when the deployment pushes container images.
+2. Writes the identity files in the `nonprod` and `prod` folders of endjin-identity-ops, following the existing entries.
+3. Opens a PR there, with only those files staged.
+4. Lists what the consuming repo still needs after the merge: a deploy workflow that signs in with OIDC, and protection rules on the prod environment. The identity manager creates the GitHub environments and their `AZURE_*` variables itself.
+
+To use it, name the repo and its environments:
+
+```text
+/devops-tools:register-deployment-identity dev and prod identities for this repo, using the endjin-identity-ops clone in D:\endjin-identity-ops
+```
+
+You can also ask in your own words, for example "set up a deployment identity so this repo's workflow can deploy to Azure".
+
+The skill contains no subscription IDs or other tenant details: it reads them from endjin-identity-ops each time.
 
 ### writing-tools
 
