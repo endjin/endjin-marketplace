@@ -1,0 +1,12 @@
+{
+  "name": "devops-tools",
+  "displayName": "DevOps Tools",
+  "description": "Tools for endjin's CI/CD and Azure deployments — includes register-deployment-identity for requesting GitHub Actions deployment identities in endjin-identity-ops",
+  "author": {
+    "name": "endjin",
+    "url": "https://endjin.com"
+  },
+  "license": "MIT",
+  "keywords": ["devops", "ci-cd", "azure", "github-actions", "managed-identity", "oidc"],
+  "repository": "https://github.com/endjin/endjin-marketplace"
+}

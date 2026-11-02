@@ -33,6 +33,18 @@
       "repository": "https://github.com/endjin/endjin-marketplace"
     },
     {
+      "name": "devops-tools",
+      "source": "./plugins/devops-tools",
+      "description": "Tools for endjin's CI/CD and Azure deployments — includes register-deployment-identity for requesting GitHub Actions deployment identities in endjin-identity-ops",
+      "author": {
+        "name": "endjin"
+      },
+      "license": "MIT",
+      "keywords": ["devops", "ci-cd", "azure", "github-actions", "managed-identity", "oidc"],
+      "category": "devops",
+      "repository": "https://github.com/endjin/endjin-marketplace"
+    },
+    {
       "name": "wip",
       "source": "./plugins/wip",
       "description": "A Claude Code work-in-progress (WIP) pane that tracks the defects, issues, tasks and decisions your sessions turn up, grouped by category and priority, with a detail view to decide or direct the work",
